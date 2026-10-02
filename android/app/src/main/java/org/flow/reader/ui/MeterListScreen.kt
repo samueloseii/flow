@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.flow.reader.R
@@ -150,7 +151,7 @@ fun SyncStatusBar(state: UiState, pending: Int, onClick: () -> Unit) {
         Box(Modifier.size(10.dp).background(color, CircleShape))
         Text(label, style = MaterialTheme.typography.bodyMedium, color = color, fontWeight = FontWeight.Medium)
         Text(
-            if (pending > 0) stringRes(R.string.pending_readings, pending)
+            if (pending > 0) pluralStringResource(R.plurals.pending_readings, pending, pending)
             else stringRes(R.string.no_pending),
             style = MaterialTheme.typography.bodyMedium,
         )
