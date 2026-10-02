@@ -14,7 +14,10 @@
     <string name="online">Online</string>
     <string name="offline">Offline</string>
     <string name="sync_error">Sync error</string>
-    <string name="pending_readings">%1$d readings to send</string>
+    <plurals name="pending_readings">
+        <item quantity="one">%1$d reading to send</item>
+        <item quantity="other">%1$d readings to send</item>
+    </plurals>
     <string name="no_pending">Everything synced</string>
     <string name="last_sync">Last sync: %1$s</string>
     <string name="never">never</string>
@@ -26,7 +29,7 @@
     <string name="consumption">Consumption: %1$s m³</string>
     <string name="warn_lower">This reading is lower than the previous one. Check the meter.</string>
     <string name="warn_zero">Consumption is zero. Check the meter.</string>
-    <string name="warn_high">Consumption is more than 25%% above the average.</string>
+    <string name="warn_high" formatted="false">Consumption is more than 25% above the average.</string>
     <string name="saved_offline">Saved on this phone. It will be sent when internet returns.</string>
     <string name="saved">Reading saved.</string>
     <string name="synced">Readings sent to the server.</string>
