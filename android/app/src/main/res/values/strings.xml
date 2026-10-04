@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Flow Readings</string>
+    <string name="tagline">Meter readings for community water systems</string>
+    <string name="meters_count">%1$d households</string>
+    <string name="last_short">last</string>
     <string name="sign_in">Sign in</string>
     <string name="email">Email</string>
     <string name="password">Password</string>

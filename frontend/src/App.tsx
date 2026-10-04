@@ -1,19 +1,21 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import Layout from './components/layout/Layout'
 import LoginPage from './components/auth/LoginPage'
-import DashboardPage from './components/dashboard/DashboardPage'
-import CommunitiesPage from './components/communities/CommunitiesPage'
-import HouseholdsPage from './components/households/HouseholdsPage'
-import HouseholdDetailPage from './components/households/HouseholdDetailPage'
-import BillingPage from './components/billing/BillingPage'
-import ExpensesPage from './components/expenses/ExpensesPage'
-import MaintenancePage from './components/maintenance/MaintenancePage'
-import AnalyticsPage from './components/reports/AnalyticsPage'
-import UsersPage from './components/users/UsersPage'
-import FieldView from './components/field/FieldView'
-import PrintBill from './components/billing/PrintBill'
 import { Spinner } from './components/ui'
+
+const DashboardPage = lazy(() => import('./components/dashboard/DashboardPage'))
+const CommunitiesPage = lazy(() => import('./components/communities/CommunitiesPage'))
+const HouseholdsPage = lazy(() => import('./components/households/HouseholdsPage'))
+const HouseholdDetailPage = lazy(() => import('./components/households/HouseholdDetailPage'))
+const BillingPage = lazy(() => import('./components/billing/BillingPage'))
+const ExpensesPage = lazy(() => import('./components/expenses/ExpensesPage'))
+const MaintenancePage = lazy(() => import('./components/maintenance/MaintenancePage'))
+const AnalyticsPage = lazy(() => import('./components/reports/AnalyticsPage'))
+const UsersPage = lazy(() => import('./components/users/UsersPage'))
+const FieldView = lazy(() => import('./components/field/FieldView'))
+const PrintBill = lazy(() => import('./components/billing/PrintBill'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
@@ -35,7 +37,8 @@ function AdminOrRedirect() {
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<Spinner />}>
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       {/* Field view: operators and readers */}
       <Route
@@ -66,6 +69,7 @@ export default function App() {
         <Route path="/team" element={<UsersPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   )
 }
