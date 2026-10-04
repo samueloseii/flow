@@ -161,7 +161,9 @@ private fun ConsumptionCard(consumption: Double, warning: String?) {
     val tint = if (warning != null) FlowWarning else FlowSuccess
     Card(
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = tint.copy(alpha = 0.08f)),
+        colors = CardDefaults.cardColors(
+            containerColor = if (warning != null) Color(0xFFFFF7ED) else Color(0xFFF0FDF4),
+        ),
         modifier = Modifier
             .padding(top = 12.dp)
             .fillMaxWidth(),
