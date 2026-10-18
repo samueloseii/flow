@@ -16,6 +16,10 @@ data class MeterEntity(
     val lastReadingValue: Double,
     val lastReadingDate: String?,
     val avgConsumptionM3: Double,
+    val communityName: String? = null,
+    val daysSinceLastReading: Int? = null,
+    val expectedConsumptionM3: Double? = null,
+    val expectedReadingValue: Double? = null,
     val syncedAt: Long,
 )
 

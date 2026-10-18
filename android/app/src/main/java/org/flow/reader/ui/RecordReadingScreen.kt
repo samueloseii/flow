@@ -105,10 +105,23 @@ fun RecordReadingScreen(
                     color = Color.White,
                 )
                 meter.lastReadingDate?.let {
+                    val days = meter.daysSinceLastReading
                     Text(
-                        it.take(10),
+                        if (days != null) stringRes(R.string.last_read_days_ago, it.take(10), days) else it.take(10),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.8f),
+                    )
+                }
+                meter.expectedConsumptionM3?.let { expected ->
+                    Text(
+                        stringRes(
+                            R.string.expected_use,
+                            formatNumber(expected),
+                            formatNumber(meter.expectedReadingValue ?: (meter.lastReadingValue + expected)),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }
