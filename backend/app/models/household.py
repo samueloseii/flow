@@ -39,6 +39,9 @@ class Household(Base):
     community_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("communities.id")
     )
+    tariff_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("tariffs.id"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -50,6 +53,19 @@ class Household(Base):
     )
 
     community: Mapped["Community"] = relationship(back_populates="households")  # noqa: F821
-    meter: Mapped["Meter | None"] = relationship(back_populates="household", uselist=False)  # noqa: F821
+    meters: Mapped[list["Meter"]] = relationship(  # noqa: F821
+        back_populates="household", order_by="desc(Meter.created_at)"
+    )
+    tariff: Mapped["Tariff | None"] = relationship(back_populates="households")  # noqa: F821
+
+    @property
+    def meter(self) -> "Meter | None":  # noqa: F821
+        """The meter currently being read; retired meters stay for history."""
+        from app.models.meter import MeterStatus
+
+        active = [m for m in self.meters if m.status == MeterStatus.ACTIVE]
+        if active:
+            return active[0]
+        return self.meters[0] if self.meters else None
     invoices: Mapped[list["Invoice"]] = relationship(back_populates="household")  # noqa: F821
     payments: Mapped[list["Payment"]] = relationship(back_populates="household")  # noqa: F821

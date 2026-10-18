@@ -11,7 +11,10 @@ from app.api.endpoints import (
     maintenance,
     meters,
     partners,
+    readings,
     sync,
+    tariffs,
+    water_committees,
 )
 
 api_router = APIRouter()
@@ -26,3 +29,6 @@ api_router.include_router(expenses.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(analytics.router)
 api_router.include_router(sync.router)
+api_router.include_router(water_committees.router)
+api_router.include_router(tariffs.router)
+api_router.include_router(readings.router)

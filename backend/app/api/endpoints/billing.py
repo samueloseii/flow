@@ -11,8 +11,11 @@ from app.db.session import get_db
 from app.models.billing import Invoice, InvoiceStatus, Payment
 from app.models.community import Community
 from app.models.household import Household, HouseholdStatus
-from app.models.meter import Meter, MeterReading
+from app.models.meter import MeterReading
+from app.models.tariff import Tariff
 from app.models.user import User
+from app.schemas.meter import MeterReadingResponse
+from app.services.scope import require_community, require_household, require_committee, scope_households
 from app.schemas.billing import (
     InvoiceCreate,
     InvoiceGenerateRequest,
@@ -65,6 +68,7 @@ def list_invoices(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Invoice, Household).join(Household, Invoice.household_id == Household.id)
+    query = scope_households(db, current_user, query)
     if household_id:
         query = query.filter(Invoice.household_id == household_id)
     if community_id:
@@ -101,67 +105,106 @@ def generate_invoices(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
-    """Bill every active household with a reading in the period, using community tariffs."""
-    community = db.query(Community).filter(Community.id == payload.community_id).first()
-    if not community:
-        raise HTTPException(status_code=404, detail="Community not found")
+    """Bill every active household with readings in the period.
 
-    households = (
-        db.query(Household)
-        .filter(Household.community_id == community.id)
-        .filter(Household.status == HouseholdStatus.ACTIVE)
-        .order_by(Household.account_number)
-        .all()
-    )
+    Each household is charged on its own tariff (or the committee's default tariff).
+    Communities without any tariff fall back to their fixed + per-m³ rates.
+    The readings used are stamped with the bill so they can be traced later.
+    """
+    if payload.water_committee_id:
+        require_committee(db, current_user, payload.water_committee_id)
+        communities = (
+            db.query(Community)
+            .filter(Community.water_committee_id == payload.water_committee_id)
+            .all()
+        )
+    elif payload.community_id:
+        communities = [require_community(db, current_user, payload.community_id)]
+    else:
+        raise HTTPException(status_code=400, detail="Choose a community or a water committee")
 
     created: list[Invoice] = []
     skipped_existing = 0
     skipped_no_reading = 0
+    skipped_no_tariff = 0
 
-    for household in households:
-        already = (
-            db.query(Invoice)
-            .filter(Invoice.household_id == household.id)
-            .filter(Invoice.billing_period_start == payload.billing_period_start)
-            .first()
+    for community in communities:
+        default_tariff = None
+        if community.water_committee_id:
+            default_tariff = (
+                db.query(Tariff)
+                .filter(Tariff.water_committee_id == community.water_committee_id)
+                .filter(Tariff.is_default.is_(True))
+                .first()
+            )
+        households = (
+            db.query(Household)
+            .filter(Household.community_id == community.id)
+            .filter(Household.status == HouseholdStatus.ACTIVE)
+            .order_by(Household.account_number)
+            .all()
         )
-        if already:
-            skipped_existing += 1
-            continue
+        for household in households:
+            already = (
+                db.query(Invoice)
+                .filter(Invoice.household_id == household.id)
+                .filter(Invoice.billing_period_start == payload.billing_period_start)
+                .first()
+            )
+            if already:
+                skipped_existing += 1
+                continue
 
-        meter = db.query(Meter).filter(Meter.household_id == household.id).first()
-        consumption = 0.0
-        if meter:
-            consumption = (
-                db.query(func.coalesce(func.sum(MeterReading.consumption_m3), 0.0))
-                .filter(MeterReading.meter_id == meter.id)
+            meter_ids = [m.id for m in household.meters]
+            readings = (
+                db.query(MeterReading)
+                .filter(MeterReading.meter_id.in_(meter_ids))
+                .filter(MeterReading.invoice_id.is_(None))
                 .filter(MeterReading.reading_date >= payload.billing_period_start)
                 .filter(MeterReading.reading_date <= payload.billing_period_end)
-                .scalar()
+                .all()
+                if meter_ids
+                else []
             )
-        if not meter or consumption <= 0:
-            skipped_no_reading += 1
-            continue
+            consumption = round(sum(r.consumption_m3 for r in readings), 3)
+            if not readings or consumption <= 0:
+                skipped_no_reading += 1
+                continue
 
-        variable_charge = round(consumption * community.tariff_per_m3, 2)
-        total = round(community.tariff_fixed + variable_charge, 2)
-        invoice = Invoice(
-            invoice_number=_generate_invoice_number(db),
-            billing_period_start=payload.billing_period_start,
-            billing_period_end=payload.billing_period_end,
-            consumption_m3=consumption,
-            fixed_charge=community.tariff_fixed,
-            variable_charge=variable_charge,
-            total_amount=total,
-            balance_due=total,
-            currency=community.currency,
-            due_date=payload.due_date,
-            household_id=household.id,
-        )
-        db.add(invoice)
-        db.flush()
-        household.outstanding_balance += total
-        created.append(invoice)
+            tariff = household.tariff or default_tariff
+            if tariff:
+                fixed, variable, _blocks = tariff.charge_for(consumption)
+                currency = tariff.currency
+                note = f"Tariff: {tariff.name}"
+            elif community.tariff_fixed or community.tariff_per_m3:
+                fixed = community.tariff_fixed
+                variable = round(consumption * community.tariff_per_m3, 2)
+                currency = community.currency
+                note = None
+            else:
+                skipped_no_tariff += 1
+                continue
+            total = round(fixed + variable, 2)
+            invoice = Invoice(
+                invoice_number=_generate_invoice_number(db),
+                billing_period_start=payload.billing_period_start,
+                billing_period_end=payload.billing_period_end,
+                consumption_m3=consumption,
+                fixed_charge=fixed,
+                variable_charge=variable,
+                total_amount=total,
+                balance_due=total,
+                currency=currency,
+                due_date=payload.due_date,
+                household_id=household.id,
+                notes=note,
+            )
+            db.add(invoice)
+            db.flush()
+            for reading in readings:
+                reading.invoice_id = invoice.id
+            household.outstanding_balance += total
+            created.append(invoice)
 
     db.commit()
     for invoice in created:
@@ -172,6 +215,7 @@ def generate_invoices(
         created=len(created),
         skipped_existing=skipped_existing,
         skipped_no_reading=skipped_no_reading,
+        skipped_no_tariff=skipped_no_tariff,
         invoices=[_invoice_response(inv, by_id.get(inv.household_id)) for inv in created],
     )
 
@@ -216,6 +260,7 @@ def list_payments(
         .join(Household, Payment.household_id == Household.id)
         .outerjoin(Invoice, Payment.invoice_id == Invoice.id)
     )
+    query = scope_households(db, current_user, query)
     if household_id:
         query = query.filter(Payment.household_id == household_id)
     if community_id:
@@ -239,6 +284,7 @@ def create_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
+    require_household(db, current_user, payload.household_id)
     payment = Payment(**payload.model_dump())
     db.add(payment)
 
@@ -293,6 +339,8 @@ class BillDetail(BaseModel):
     due_date: str
     previous_reading: float | None = None
     current_reading: float | None = None
+    tariff_name: str | None = None
+    readings: list[MeterReadingResponse] = []
 
 
 @router.get("/bill/{invoice_id}", response_model=BillDetail)
@@ -308,19 +356,32 @@ def get_printable_bill(
     household = db.query(Household).filter(Household.id == invoice.household_id).first()
     community = db.query(Community).filter(Community.id == household.community_id).first() if household else None
 
-    meter = db.query(Meter).filter(Meter.household_id == invoice.household_id).first() if household else None
-    readings = []
-    if meter:
-        readings = (
-            db.query(MeterReading)
-            .filter(MeterReading.meter_id == meter.id)
-            .order_by(MeterReading.reading_date.desc())
-            .limit(2)
-            .all()
-        )
+    if household:
+        require_household(db, current_user, household.id)
+    readings = (
+        db.query(MeterReading)
+        .filter(MeterReading.invoice_id == invoice.id)
+        .order_by(MeterReading.reading_date)
+        .all()
+    )
+    if not readings and household:
+        # Bills from before readings were linked: fall back to the latest two on the active meter.
+        meter = household.meter
+        if meter:
+            readings = (
+                db.query(MeterReading)
+                .filter(MeterReading.meter_id == meter.id)
+                .filter(MeterReading.reading_date <= invoice.billing_period_end)
+                .order_by(MeterReading.reading_date)
+                .limit(2)
+                .all()
+            )
 
-    current_reading = readings[0].reading_value if len(readings) > 0 else None
-    previous_reading = readings[1].reading_value if len(readings) > 1 else (readings[0].previous_value if readings else None)
+    current_reading = readings[-1].reading_value if readings else None
+    previous_reading = readings[0].previous_value if readings else None
+    tariff_name = (
+        invoice.notes.replace("Tariff: ", "") if invoice.notes and invoice.notes.startswith("Tariff: ") else None
+    )
 
     period_str = f"{invoice.billing_period_start.strftime('%b %d')} - {invoice.billing_period_end.strftime('%b %d, %Y')}"
 
@@ -342,6 +403,8 @@ def get_printable_bill(
         due_date=invoice.due_date.strftime('%b %d, %Y'),
         previous_reading=previous_reading,
         current_reading=current_reading,
+        tariff_name=tariff_name,
+        readings=[MeterReadingResponse.model_validate(r) for r in readings],
     )
 
 
@@ -377,9 +440,13 @@ def delete_invoice(
         )
     household = db.query(Household).filter(Household.id == invoice.household_id).first()
     if household:
+        require_household(db, current_user, household.id)
         household.outstanding_balance = round(
             max(0.0, household.outstanding_balance - invoice.balance_due), 2
         )
+    db.query(MeterReading).filter(MeterReading.invoice_id == invoice_id).update(
+        {MeterReading.invoice_id: None}, synchronize_session=False
+    )
     db.delete(invoice)
     db.commit()
 

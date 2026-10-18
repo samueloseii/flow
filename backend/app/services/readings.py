@@ -5,7 +5,7 @@ transcription error. Suspicious readings are always stored — they are flagged
 for the administrator to review rather than rejected.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -88,3 +88,34 @@ def record_reading(
         meter.last_reading_date = reading_date
     meter.avg_consumption_m3 = recent_average(db, meter.id)
     return reading
+
+
+def expected_consumption(
+    db: Session, meter: Meter, now: datetime
+) -> tuple[float | None, int | None, float | None]:
+    """(average m³ per day, days since last reading, expected m³ now) from recent history."""
+    readings = (
+        db.query(MeterReading)
+        .filter(MeterReading.meter_id == meter.id)
+        .order_by(MeterReading.reading_date.desc())
+        .limit(6)
+        .all()
+    )
+    last_date = meter.last_reading_date
+    if last_date is None and readings:
+        last_date = readings[0].reading_date
+    days = None
+    if last_date is not None:
+        if last_date.tzinfo is None:
+            last_date = last_date.replace(tzinfo=timezone.utc)
+        days = max(0, (now - last_date).days)
+    if len(readings) < 2:
+        return None, days, None
+    newest, oldest = readings[0].reading_date, readings[-1].reading_date
+    span_days = (newest - oldest).total_seconds() / 86400
+    if span_days <= 0:
+        return None, days, None
+    used = sum(r.consumption_m3 for r in readings[:-1])
+    daily = round(used / span_days, 3)
+    expected = round(daily * days, 1) if days is not None else None
+    return daily, days, expected

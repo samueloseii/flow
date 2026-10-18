@@ -40,13 +40,15 @@ class InvoiceResponse(BaseModel):
     household_name: str | None = None
     account_number: str | None = None
     community_id: uuid.UUID | None = None
+    tariff_name: str | None = None
 
     class Config:
         from_attributes = True
 
 
 class InvoiceGenerateRequest(BaseModel):
-    community_id: uuid.UUID
+    community_id: uuid.UUID | None = None
+    water_committee_id: uuid.UUID | None = None
     billing_period_start: datetime
     billing_period_end: datetime
     due_date: datetime
@@ -56,6 +58,7 @@ class InvoiceGenerateResult(BaseModel):
     created: int
     skipped_existing: int
     skipped_no_reading: int
+    skipped_no_tariff: int = 0
     invoices: list[InvoiceResponse]
 
 

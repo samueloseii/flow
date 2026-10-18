@@ -35,6 +35,11 @@ data class ReadingContext(
     @SerialName("last_reading_value") val lastReadingValue: Double = 0.0,
     @SerialName("last_reading_date") val lastReadingDate: String? = null,
     @SerialName("avg_consumption_m3") val avgConsumptionM3: Double = 0.0,
+    @SerialName("community_name") val communityName: String? = null,
+    @SerialName("avg_daily_consumption_m3") val avgDailyConsumptionM3: Double? = null,
+    @SerialName("days_since_last_reading") val daysSinceLastReading: Int? = null,
+    @SerialName("expected_consumption_m3") val expectedConsumptionM3: Double? = null,
+    @SerialName("expected_reading_value") val expectedReadingValue: Double? = null,
 )
 
 @Serializable

@@ -23,7 +23,9 @@ class UserResponse(BaseModel):
     phone: str | None = None
     is_active: bool = True
     partner_id: str | None = None
+    water_committee_id: str | None = None
     community_id: str | None = None
+    assigned_community_ids: list[str] = []
 
 
 class RegisterRequest(BaseModel):
@@ -34,7 +36,9 @@ class RegisterRequest(BaseModel):
     role: UserRole = UserRole.READER
     preferred_language: str = "es"
     partner_id: uuid.UUID | None = None
+    water_committee_id: uuid.UUID | None = None
     community_id: uuid.UUID | None = None
+    assigned_community_ids: list[uuid.UUID] | None = None
 
 
 class UserUpdate(BaseModel):
@@ -43,6 +47,9 @@ class UserUpdate(BaseModel):
     role: UserRole | None = None
     community_id: uuid.UUID | None = None
     clear_community: bool = False
+    water_committee_id: uuid.UUID | None = None
+    clear_water_committee: bool = False
+    assigned_community_ids: list[uuid.UUID] | None = None
 
 
 class PasswordReset(BaseModel):

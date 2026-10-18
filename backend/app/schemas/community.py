@@ -21,7 +21,8 @@ class CommunityCreate(BaseModel):
     tariff_fixed: float = 0.0
     tariff_per_m3: float = 0.0
     description: str | None = None
-    partner_id: uuid.UUID
+    partner_id: uuid.UUID | None = None
+    water_committee_id: uuid.UUID | None = None
 
 
 class CommunityUpdate(BaseModel):
@@ -38,6 +39,7 @@ class CommunityUpdate(BaseModel):
     tariff_fixed: float | None = None
     tariff_per_m3: float | None = None
     description: str | None = None
+    water_committee_id: uuid.UUID | None = None
 
 
 class CommunityResponse(BaseModel):
@@ -57,6 +59,8 @@ class CommunityResponse(BaseModel):
     tariff_per_m3: float
     description: str | None
     partner_id: uuid.UUID
+    water_committee_id: uuid.UUID | None = None
+    water_committee_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

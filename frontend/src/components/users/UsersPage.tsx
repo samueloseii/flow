@@ -21,27 +21,37 @@ interface TeamMember {
   phone: string | null
   is_active: boolean
   community_id: string | null
+  water_committee_id: string | null
+  assigned_community_ids: string[]
+}
+
+interface Committee {
+  id: string
+  name: string
 }
 
 interface Community {
   id: string
   name: string
+  water_committee_id: string | null
 }
 
 const roleOptions = [
-  { value: 'operator', label: 'Operator — records readings and issue reports' },
-  { value: 'treasurer', label: 'Treasurer — billing, payments and expenses' },
-  { value: 'community_admin', label: 'System administrator — full access to a community' },
-  { value: 'partner_admin', label: 'Organization administrator — all its communities' },
+  { value: 'operator', label: 'Operator — reads meters in assigned communities' },
+  { value: 'treasurer', label: 'Treasurer — billing, payments and expenses for the committee' },
+  { value: 'community_admin', label: 'Water committee administrator — runs the committee' },
+  { value: 'partner_admin', label: 'Partner administrator — all committees the partner supports' },
+  { value: 'super_admin', label: 'System administrator — everything' },
+  { value: 'reader', label: 'Viewer — read-only' },
 ]
 
 const roleLabels: Record<string, string> = {
   super_admin: 'Super administrator',
   partner_admin: 'Organization administrator',
-  community_admin: 'System administrator',
+  community_admin: 'Water committee admin',
   treasurer: 'Treasurer',
   operator: 'Operator',
-  reader: 'Reader',
+  reader: 'Viewer',
 }
 
 const emptyForm = {
@@ -51,21 +61,25 @@ const emptyForm = {
   phone: '',
   role: 'operator',
   community_id: '',
+  water_committee_id: '',
+  assigned_community_ids: [] as string[],
 }
 
 export default function UsersPage() {
   const [members, setMembers] = useState<TeamMember[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
+  const [committees, setCommittees] = useState<Committee[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<TeamMember | null>(null)
-  const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '' })
+  const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '', water_committee_id: '', assigned_community_ids: [] as string[] })
 
   function load() {
     setLoading(true)
+    api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
     Promise.all([api.get('/auth/users'), api.get('/communities/')])
       .then(([usersRes, communitiesRes]) => {
         setMembers(usersRes.data)
@@ -89,6 +103,8 @@ export default function UsersPage() {
         phone: form.phone || null,
         role: form.role,
         community_id: form.community_id || null,
+        water_committee_id: form.water_committee_id || null,
+        assigned_community_ids: form.role === 'operator' || form.role === 'reader' ? form.assigned_community_ids : [],
       })
       setShowForm(false)
       setForm(emptyForm)
@@ -112,6 +128,9 @@ export default function UsersPage() {
         role: editForm.role,
         community_id: editForm.community_id || null,
         clear_community: !editForm.community_id,
+        water_committee_id: editForm.water_committee_id || null,
+        clear_water_committee: !editForm.water_committee_id,
+        assigned_community_ids: editForm.assigned_community_ids,
       })
       setEditing(null)
       load()
@@ -204,6 +223,8 @@ export default function UsersPage() {
                             phone: m.phone ?? '',
                             role: m.role,
                             community_id: m.community_id ?? '',
+                            water_committee_id: m.water_committee_id ?? '',
+                            assigned_community_ids: m.assigned_community_ids ?? [],
                           })
                           setError('')
                           setEditing(m)
@@ -275,6 +296,42 @@ export default function UsersPage() {
                   ))}
                 </select>
               </Field>
+              <Field label="Water committee" className="sm:col-span-2">
+                <select
+                  className={inputClass}
+                  value={editForm.water_committee_id}
+                  onChange={(e) => setEditForm({ ...editForm, water_committee_id: e.target.value, community_id: '', assigned_community_ids: [] })}
+                >
+                  <option value="">{committees.length ? 'All committees' : 'None'}</option>
+                  {committees.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {(editForm.role === 'operator' || editForm.role === 'reader') ? (
+                <Field label="Communities to read" className="sm:col-span-2" hint="Tick every community this person covers">
+                  <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                    {communities.filter((c) => !editForm.water_committee_id || c.water_committee_id === editForm.water_committee_id).map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={editForm.assigned_community_ids.includes(c.id)}
+                          onChange={(e) => {
+                            const ids = e.target.checked
+                              ? [...editForm.assigned_community_ids, c.id]
+                              : editForm.assigned_community_ids.filter((id) => id !== c.id)
+                            setEditForm({ ...editForm, assigned_community_ids: ids, community_id: ids[0] ?? '' })
+                          }}
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                    {communities.length === 0 && <span className="text-xs text-gray-500">No communities yet</span>}
+                  </div>
+                </Field>
+              ) : (
               <Field label="Community" className="sm:col-span-2">
                 <select
                   className={inputClass}
@@ -282,13 +339,14 @@ export default function UsersPage() {
                   onChange={(e) => setEditForm({ ...editForm, community_id: e.target.value })}
                 >
                   <option value="">All communities</option>
-                  {communities.map((c) => (
+                  {communities.filter((c) => !editForm.water_committee_id || c.water_committee_id === editForm.water_committee_id).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
               </Field>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className={secondaryButtonClass} onClick={() => setEditing(null)}>
@@ -362,6 +420,42 @@ export default function UsersPage() {
                   ))}
                 </select>
               </Field>
+              <Field label="Water committee" className="sm:col-span-2">
+                <select
+                  className={inputClass}
+                  value={form.water_committee_id}
+                  onChange={(e) => setForm({ ...form, water_committee_id: e.target.value, community_id: '', assigned_community_ids: [] })}
+                >
+                  <option value="">{committees.length ? 'All committees' : 'None'}</option>
+                  {committees.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {(form.role === 'operator' || form.role === 'reader') ? (
+                <Field label="Communities to read" className="sm:col-span-2" hint="Tick every community this person covers">
+                  <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                    {communities.filter((c) => !form.water_committee_id || c.water_committee_id === form.water_committee_id).map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={form.assigned_community_ids.includes(c.id)}
+                          onChange={(e) => {
+                            const ids = e.target.checked
+                              ? [...form.assigned_community_ids, c.id]
+                              : form.assigned_community_ids.filter((id) => id !== c.id)
+                            setForm({ ...form, assigned_community_ids: ids, community_id: ids[0] ?? '' })
+                          }}
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                    {communities.length === 0 && <span className="text-xs text-gray-500">No communities yet</span>}
+                  </div>
+                </Field>
+              ) : (
               <Field label="Community" className="sm:col-span-2">
                 <select
                   className={inputClass}
@@ -369,13 +463,14 @@ export default function UsersPage() {
                   onChange={(e) => setForm({ ...form, community_id: e.target.value })}
                 >
                   <option value="">All communities</option>
-                  {communities.map((c) => (
+                  {communities.filter((c) => !form.water_committee_id || c.water_committee_id === form.water_committee_id).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
               </Field>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className={secondaryButtonClass} onClick={() => setShowForm(false)}>

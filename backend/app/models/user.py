@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Table, Text
 from app.db.types import GUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,17 @@ class UserRole(str, enum.Enum):
     OPERATOR = "operator"
     TREASURER = "treasurer"
     READER = "reader"
+
+
+# Communities an operator is expected to visit (may span several in one committee).
+operator_communities = Table(
+    "operator_communities",
+    Base.metadata,
+    Column("user_id", GUID(), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "community_id", GUID(), ForeignKey("communities.id", ondelete="CASCADE"), primary_key=True
+    ),
+)
 
 
 class User(Base):
@@ -35,6 +46,9 @@ class User(Base):
     partner_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("partners.id"), nullable=True
     )
+    water_committee_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("water_committees.id"), nullable=True
+    )
     community_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("communities.id"), nullable=True
     )
@@ -51,3 +65,9 @@ class User(Base):
 
     partner: Mapped["Partner | None"] = relationship(back_populates="users")  # noqa: F821
     community: Mapped["Community | None"] = relationship(back_populates="users")  # noqa: F821
+    water_committee: Mapped["WaterCommittee | None"] = relationship(  # noqa: F821
+        back_populates="users"
+    )
+    assigned_communities: Mapped[list["Community"]] = relationship(  # noqa: F821
+        secondary=operator_communities
+    )
