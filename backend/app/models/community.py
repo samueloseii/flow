@@ -49,6 +49,9 @@ class Community(Base):
     partner_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("partners.id")
     )
+    water_committee_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("water_committees.id"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -60,6 +63,9 @@ class Community(Base):
     )
 
     partner: Mapped["Partner"] = relationship(back_populates="communities")  # noqa: F821
+    water_committee: Mapped["WaterCommittee | None"] = relationship(  # noqa: F821
+        back_populates="communities"
+    )
     households: Mapped[list["Household"]] = relationship(back_populates="community")  # noqa: F821
     users: Mapped[list["User"]] = relationship(back_populates="community")  # noqa: F821
     maintenance_records: Mapped[list["MaintenanceRecord"]] = relationship(  # noqa: F821

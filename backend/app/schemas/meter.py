@@ -12,6 +12,10 @@ class MeterCreate(BaseModel):
     model: str | None = None
     install_date: datetime | None = None
     household_id: uuid.UUID
+    initial_reading: float = 0.0
+    # When replacing: what to do with the meter being taken out.
+    retire_existing_as: MeterStatus | None = None
+    final_reading_of_old_meter: float | None = None
 
 
 class MeterReadingCreate(BaseModel):
@@ -53,6 +57,7 @@ class MeterReadingResponse(BaseModel):
     recorded_by: str | None
     flag_reason: str | None
     meter_id: uuid.UUID
+    invoice_id: uuid.UUID | None = None
     created_at: datetime
 
     class Config:
@@ -72,3 +77,9 @@ class ReadingContext(BaseModel):
     last_reading_value: float
     last_reading_date: datetime | None
     avg_consumption_m3: float
+    community_name: str | None = None
+    # Derived from history so the operator can judge the number on the dial.
+    avg_daily_consumption_m3: float | None = None
+    days_since_last_reading: int | None = None
+    expected_consumption_m3: float | None = None
+    expected_reading_value: float | None = None
