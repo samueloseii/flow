@@ -23,6 +23,13 @@ interface Community {
   currency: string
   tariff_fixed: number
   tariff_per_m3: number
+  water_committee_id: string | null
+  water_committee_name: string | null
+}
+
+interface Committee {
+  id: string
+  name: string
 }
 
 interface Organization {
@@ -48,11 +55,13 @@ const emptyForm = {
   tariff_per_m3: '',
   partner_id: '',
   new_partner_name: '',
+  water_committee_id: '',
 }
 
 export default function CommunitiesPage() {
   const [communities, setCommunities] = useState<Community[]>([])
   const [organizations, setOrganizations] = useState<Organization[]>([])
+  const [committees, setCommittees] = useState<Committee[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -61,6 +70,7 @@ export default function CommunitiesPage() {
 
   function load() {
     setLoading(true)
+    api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
     Promise.all([api.get('/communities/'), api.get('/partners/')])
       .then(([communityRes, partnerRes]) => {
         setCommunities(communityRes.data)
@@ -73,7 +83,7 @@ export default function CommunitiesPage() {
   useEffect(load, [])
 
   function openForm() {
-    setForm({ ...emptyForm, partner_id: organizations[0]?.id ?? '' })
+    setForm({ ...emptyForm, partner_id: organizations[0]?.id ?? '', water_committee_id: committees[0]?.id ?? '' })
     setError('')
     setShowForm(true)
   }
@@ -84,7 +94,7 @@ export default function CommunitiesPage() {
     setError('')
     try {
       let partnerId = form.partner_id
-      if (!partnerId) {
+      if (!partnerId && !form.water_committee_id) {
         const created = await api.post('/partners/', {
           name: form.new_partner_name.trim() || form.name,
           country: form.country,
@@ -101,7 +111,8 @@ export default function CommunitiesPage() {
         population: form.population ? Number(form.population) : null,
         tariff_fixed: Number(form.tariff_fixed || 0),
         tariff_per_m3: Number(form.tariff_per_m3 || 0),
-        partner_id: partnerId,
+        partner_id: partnerId || null,
+        water_committee_id: form.water_committee_id || null,
       })
       setShowForm(false)
       load()
@@ -174,6 +185,10 @@ export default function CommunitiesPage() {
                 <div>
                   <dt className="text-gray-500 text-xs">Connections</dt>
                   <dd className="font-medium text-gray-900">{c.total_connections}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Water committee</dt>
+                  <dd className="font-medium text-gray-900">{c.water_committee_name ?? '—'}</dd>
                 </div>
                 <div>
                   <dt className="text-gray-500 text-xs">Tariff</dt>
@@ -285,6 +300,21 @@ export default function CommunitiesPage() {
                   required
                 />
               </Field>
+              <Field label="Water committee" className="sm:col-span-2" hint="The committee that runs this water system">
+                <select
+                  className={inputClass}
+                  value={form.water_committee_id}
+                  onChange={(e) => setForm({ ...form, water_committee_id: e.target.value })}
+                >
+                  <option value="">No committee yet</option>
+                  {committees.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {!form.water_committee_id && (
               <Field label="Organization">
                 <select
                   className={inputClass}
@@ -299,6 +329,7 @@ export default function CommunitiesPage() {
                   <option value="">Create a new organization…</option>
                 </select>
               </Field>
+              )}
               {!form.partner_id && (
                 <Field label="New organization name">
                   <input

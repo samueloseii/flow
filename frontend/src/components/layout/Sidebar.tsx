@@ -9,6 +9,9 @@ import {
   Wrench,
   BarChart3,
   UserCog,
+  Building2,
+  Gauge,
+  Calculator,
   LogOut,
   KeyRound,
   Droplets,
@@ -17,22 +20,42 @@ import { useAuth } from '../../contexts/AuthContext'
 import api from '../../services/api'
 import { Field, Modal, inputClass, primaryButtonClass, secondaryButtonClass } from '../ui'
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/communities', icon: MapPin, label: 'Communities' },
-  { to: '/households', icon: Home, label: 'Households' },
-  { to: '/billing', icon: Receipt, label: 'Billing' },
-  { to: '/expenses', icon: Wallet, label: 'Expenses' },
-  { to: '/maintenance', icon: Wrench, label: 'Maintenance' },
-  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/team', icon: UserCog, label: 'Team' },
+const navGroups = [
+  { label: '', items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard' }] },
+  {
+    label: 'Structure',
+    items: [
+      { to: '/water-committees', icon: Building2, label: 'Water committees' },
+      { to: '/communities', icon: MapPin, label: 'Communities' },
+      { to: '/households', icon: Home, label: 'Households' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { to: '/readings', icon: Gauge, label: 'Meter readings' },
+      { to: '/billing', icon: Receipt, label: 'Billing' },
+      { to: '/tariffs', icon: Calculator, label: 'Tariffs' },
+      { to: '/expenses', icon: Wallet, label: 'Expenses' },
+      { to: '/maintenance', icon: Wrench, label: 'Maintenance' },
+    ],
+  },
+  {
+    label: 'Oversight',
+    items: [
+      { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+      { to: '/team', icon: UserCog, label: 'Team' },
+    ],
+  },
 ]
 
 const roleLabels: Record<string, string> = {
   super_admin: 'Super Admin',
   partner_admin: 'Partner Admin',
-  community_admin: 'System Administrator',
+  community_admin: 'Water committee administrator',
   treasurer: 'Treasurer',
+  operator: 'Operator',
+  reader: 'Viewer',
 }
 
 export default function Sidebar() {
@@ -72,23 +95,30 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 py-4 overflow-y-auto">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-6 py-3 text-sm transition-colors ${
-                isActive
-                  ? 'bg-primary-800 text-white border-r-2 border-primary-300'
-                  : 'text-primary-200 hover:bg-primary-800/50 hover:text-white'
-              }`
-            }
-          >
-            <item.icon className="h-5 w-5" />
-            {item.label}
-          </NavLink>
+      <nav className="flex-1 py-3 overflow-y-auto">
+        {navGroups.map((group) => (
+          <div key={group.label || 'top'} className="mb-2">
+            {group.label && (
+              <p className="px-6 pt-3 pb-1 text-[11px] uppercase tracking-wider text-primary-400">{group.label}</p>
+            )}
+            {group.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-6 py-2.5 text-sm transition-colors ${
+                    isActive
+                      ? 'bg-primary-800 text-white border-r-2 border-primary-300'
+                      : 'text-primary-200 hover:bg-primary-800/50 hover:text-white'
+                  }`
+                }
+              >
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 
