@@ -26,3 +26,6 @@ class Partner(Base):
 
     communities: Mapped[list["Community"]] = relationship(back_populates="partner")  # noqa: F821
     users: Mapped[list["User"]] = relationship(back_populates="partner")  # noqa: F821
+    water_committees: Mapped[list["WaterCommittee"]] = relationship(  # noqa: F821
+        back_populates="partner"
+    )

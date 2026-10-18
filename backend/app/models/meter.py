@@ -45,7 +45,7 @@ class Meter(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    household: Mapped["Household"] = relationship(back_populates="meter")  # noqa: F821
+    household: Mapped["Household"] = relationship(back_populates="meters")  # noqa: F821
     readings: Mapped[list["MeterReading"]] = relationship(
         back_populates="meter", order_by="desc(MeterReading.reading_date)"
     )
@@ -75,6 +75,10 @@ class MeterReading(Base):
 
     meter_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("meters.id")
+    )
+    # Set once the reading has been billed, so a bill can show the readings behind it.
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("invoices.id"), nullable=True, index=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

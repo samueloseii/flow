@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.models.household import HouseholdStatus
 from app.schemas.billing import InvoiceResponse, PaymentResponse
+from app.schemas.meter import MeterReadingResponse, MeterResponse
 
 
 class HouseholdCreate(BaseModel):
@@ -19,6 +20,7 @@ class HouseholdCreate(BaseModel):
     longitude: float | None = None
     notes: str | None = None
     community_id: uuid.UUID
+    tariff_id: uuid.UUID | None = None
     # A meter can be registered together with the account.
     meter_serial_number: str | None = None
     meter_brand: str | None = None
@@ -35,6 +37,8 @@ class HouseholdUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     notes: str | None = None
+    tariff_id: uuid.UUID | None = None
+    clear_tariff: bool = False
 
 
 class HouseholdResponse(BaseModel):
@@ -51,6 +55,8 @@ class HouseholdResponse(BaseModel):
     longitude: float | None
     notes: str | None
     community_id: uuid.UUID
+    tariff_id: uuid.UUID | None = None
+    tariff_name: str | None = None
     created_at: datetime
     updated_at: datetime
     meter_serial_number: str | None = None
@@ -76,3 +82,5 @@ class HouseholdDetail(BaseModel):
     total_billed: float
     total_paid: float
     outstanding: float
+    readings: list[MeterReadingResponse] = []
+    meters: list[MeterResponse] = []

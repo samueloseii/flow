@@ -19,6 +19,12 @@ STATEMENTS = (
     "ALTER TABLE meter_readings ADD COLUMN IF NOT EXISTS client_id VARCHAR(64)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_meter_readings_client_id "
     "ON meter_readings (client_id)",
+    "ALTER TABLE communities ADD COLUMN IF NOT EXISTS water_committee_id UUID "
+    "REFERENCES water_committees(id)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS water_committee_id UUID "
+    "REFERENCES water_committees(id)",
+    "ALTER TABLE households ADD COLUMN IF NOT EXISTS tariff_id UUID REFERENCES tariffs(id)",
+    "ALTER TABLE meter_readings ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES invoices(id)",
 )
 
 
@@ -29,6 +35,10 @@ SQLITE_STATEMENTS = (
     "ALTER TABLE meter_readings ADD COLUMN client_id VARCHAR(64)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_meter_readings_client_id "
     "ON meter_readings (client_id)",
+    "ALTER TABLE communities ADD COLUMN water_committee_id CHAR(36) REFERENCES water_committees(id)",
+    "ALTER TABLE users ADD COLUMN water_committee_id CHAR(36) REFERENCES water_committees(id)",
+    "ALTER TABLE households ADD COLUMN tariff_id CHAR(36) REFERENCES tariffs(id)",
+    "ALTER TABLE meter_readings ADD COLUMN invoice_id CHAR(36) REFERENCES invoices(id)",
 )
 
 

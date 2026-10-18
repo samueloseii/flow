@@ -11,7 +11,11 @@ from app.models.billing import Invoice, Payment
 from app.models.community import Community
 from app.models.household import Household
 from app.models.meter import Meter, MeterReading
+from app.models.meter import MeterStatus
+from app.models.tariff import Tariff
 from app.models.user import User
+from app.schemas.meter import MeterReadingResponse, MeterResponse
+from app.services.scope import can_see_committee, forbid, require_community, require_household, scope_households
 from app.schemas.billing import InvoiceResponse, PaymentResponse
 from app.schemas.household import (
     ConsumptionPoint,
@@ -37,7 +41,20 @@ def _household_response(
     if community:
         response.community_name = community.name
         response.currency = community.currency
+    if household.tariff:
+        response.tariff_name = household.tariff.name
     return response
+
+
+def _check_tariff(db: Session, user: User, household: Household, tariff_id: uuid.UUID) -> None:
+    tariff = db.query(Tariff).filter(Tariff.id == tariff_id).first()
+    if not tariff:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tariff not found")
+    community = db.query(Community).filter(Community.id == household.community_id).first()
+    if community and community.water_committee_id and tariff.water_committee_id != community.water_committee_id:
+        raise HTTPException(status_code=400, detail="That tariff belongs to a different water committee")
+    if not can_see_committee(db, user, tariff.water_committee_id):
+        raise forbid()
 
 
 @router.get("/", response_model=list[HouseholdResponse])
@@ -52,9 +69,12 @@ def list_households(
 ):
     query = (
         db.query(Household, Meter, Community)
-        .outerjoin(Meter, Meter.household_id == Household.id)
+        .outerjoin(
+            Meter, (Meter.household_id == Household.id) & (Meter.status == MeterStatus.ACTIVE)
+        )
         .outerjoin(Community, Community.id == Household.community_id)
     )
+    query = scope_households(db, current_user, query)
     if community_id:
         query = query.filter(Household.community_id == community_id)
     if status_filter:
@@ -78,6 +98,7 @@ def create_household(
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
     """Register a water account. Only administrators may open accounts."""
+    require_community(db, current_user, payload.community_id)
     existing = (
         db.query(Household)
         .filter(Household.account_number == payload.account_number)
@@ -96,6 +117,8 @@ def create_household(
 
     household = Household(**data)
     household.has_meter = bool(serial_number) or payload.has_meter
+    if payload.tariff_id:
+        _check_tariff(db, current_user, household, payload.tariff_id)
     db.add(household)
     db.flush()
 
@@ -128,9 +151,7 @@ def get_household(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    household = db.query(Household).filter(Household.id == household_id).first()
-    if not household:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Household not found")
+    household = require_household(db, current_user, household_id)
     community = db.query(Community).filter(Community.id == household.community_id).first()
     return _household_response(household, household.meter, community)
 
@@ -142,10 +163,8 @@ def get_household_detail(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Account history: consumption trend, bills and payments in one call."""
-    household = db.query(Household).filter(Household.id == household_id).first()
-    if not household:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Household not found")
+    """Account history: consumption trend, bills, payments and raw readings in one call."""
+    household = require_household(db, current_user, household_id)
 
     community = db.query(Community).filter(Community.id == household.community_id).first()
     meter = household.meter
@@ -202,6 +221,17 @@ def get_household_detail(
     total_billed = round(sum(i.total_amount for i in invoices), 2)
     total_paid = round(sum(p.amount for p in payments), 2)
 
+    meter_ids = [m.id for m in household.meters]
+    raw_readings = (
+        db.query(MeterReading)
+        .filter(MeterReading.meter_id.in_(meter_ids))
+        .order_by(MeterReading.reading_date.desc())
+        .limit(100)
+        .all()
+        if meter_ids
+        else []
+    )
+
     return HouseholdDetail(
         household=_household_response(household, meter, community),
         consumption_history=consumption,
@@ -210,6 +240,8 @@ def get_household_detail(
         total_billed=total_billed,
         total_paid=total_paid,
         outstanding=round(sum(i.balance_due for i in invoices), 2),
+        readings=[MeterReadingResponse.model_validate(r) for r in raw_readings],
+        meters=[MeterResponse.model_validate(m) for m in household.meters],
     )
 
 
@@ -220,10 +252,14 @@ def update_household(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
-    household = db.query(Household).filter(Household.id == household_id).first()
-    if not household:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Household not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    household = require_household(db, current_user, household_id)
+    data = payload.model_dump(exclude_unset=True)
+    clear_tariff = data.pop("clear_tariff", False)
+    if clear_tariff:
+        data["tariff_id"] = None
+    elif data.get("tariff_id"):
+        _check_tariff(db, current_user, household, data["tariff_id"])
+    for field, value in data.items():
         setattr(household, field, value)
     db.commit()
     db.refresh(household)
@@ -238,9 +274,7 @@ def delete_household(
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
     """Remove an account and everything recorded against it."""
-    household = db.query(Household).filter(Household.id == household_id).first()
-    if not household:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Household not found")
+    household = require_household(db, current_user, household_id)
     meter_ids = [
         meter_id
         for (meter_id,) in db.query(Meter.id).filter(Meter.household_id == household_id).all()

@@ -9,7 +9,16 @@ from app.api.deps import ADMIN_ROLES, FIELD_ROLES, get_current_user, require_rol
 from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.db.session import get_db
+from app.models.community import Community
 from app.models.user import User, UserRole
+from app.services.scope import (
+    can_create_role,
+    can_see_committee,
+    can_see_community,
+    forbid,
+    visible_committee_ids,
+    visible_community_ids,
+)
 from app.schemas.auth import (
     LoginRequest,
     PasswordChange,
@@ -32,8 +41,43 @@ def _user_response(user: User) -> UserResponse:
         phone=user.phone,
         is_active=user.is_active,
         partner_id=str(user.partner_id) if user.partner_id else None,
+        water_committee_id=str(user.water_committee_id) if user.water_committee_id else None,
         community_id=str(user.community_id) if user.community_id else None,
+        assigned_community_ids=[str(c.id) for c in user.assigned_communities],
     )
+
+
+def _user_in_scope(db: Session, actor: User, user: User) -> bool:
+    if actor.role == UserRole.SUPER_ADMIN:
+        return True
+    if actor.role == UserRole.PARTNER_ADMIN:
+        return user.partner_id == actor.partner_id
+    if user.water_committee_id:
+        return can_see_committee(db, actor, user.water_committee_id)
+    if user.community_id:
+        return can_see_community(db, actor, user.community_id)
+    return False
+
+
+def _check_role(actor: User, role: UserRole) -> None:
+    if not can_create_role(actor, role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only give people a role at your level or below",
+        )
+
+
+def _apply_assignments(db: Session, actor: User, user: User, ids: list[uuid.UUID] | None) -> None:
+    if ids is None:
+        return
+    communities = db.query(Community).filter(Community.id.in_(ids)).all() if ids else []
+    for c in communities:
+        if not can_see_community(db, actor, c.id):
+            raise forbid()
+    user.assigned_communities = communities
+    if communities and user.community_id is None:
+        user.community_id = communities[0].id
+
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -76,6 +120,8 @@ def reset_password(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not _user_in_scope(db, _, user) or not can_create_role(_, user.role):
+        raise forbid()
     user.hashed_password = get_password_hash(payload.new_password)
     db.commit()
 
@@ -115,6 +161,10 @@ def update_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot change your own role",
         )
+    if not _user_in_scope(db, current_user, user) or not can_create_role(current_user, user.role):
+        raise forbid()
+    if payload.role is not None:
+        _check_role(current_user, payload.role)
     if payload.full_name is not None:
         user.full_name = payload.full_name
     if payload.phone is not None:
@@ -124,7 +174,16 @@ def update_user(
     if payload.clear_community:
         user.community_id = None
     elif payload.community_id is not None:
+        if not can_see_community(db, current_user, payload.community_id):
+            raise forbid()
         user.community_id = payload.community_id
+    if payload.clear_water_committee:
+        user.water_committee_id = None
+    elif payload.water_committee_id is not None:
+        if not can_see_committee(db, current_user, payload.water_committee_id):
+            raise forbid()
+        user.water_committee_id = payload.water_committee_id
+    _apply_assignments(db, current_user, user, payload.assigned_community_ids)
     db.commit()
     db.refresh(user)
     return _user_response(user)
@@ -144,6 +203,8 @@ def delete_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not _user_in_scope(db, current_user, user) or not can_create_role(current_user, user.role):
+        raise forbid()
     db.delete(user)
     db.commit()
 
@@ -159,13 +220,17 @@ def list_users(
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
     query = db.query(User)
-    if current_user.role is UserRole.COMMUNITY_ADMIN or current_user.role is UserRole.TREASURER:
+    if current_user.role == UserRole.PARTNER_ADMIN:
+        query = query.filter(User.partner_id == current_user.partner_id)
+    elif current_user.role != UserRole.SUPER_ADMIN:
+        committee_ids = visible_committee_ids(db, current_user)
+        community_ids = visible_community_ids(db, current_user) or []
         query = query.filter(
-            or_(User.community_id == current_user.community_id, User.is_active.is_(False))
-        )
-    elif current_user.role is UserRole.PARTNER_ADMIN:
-        query = query.filter(
-            or_(User.partner_id == current_user.partner_id, User.is_active.is_(False))
+            or_(
+                User.water_committee_id.in_(committee_ids) if committee_ids else False,
+                User.community_id.in_(community_ids) if community_ids else False,
+                User.id == current_user.id,
+            )
         )
     return [_user_response(user) for user in query.order_by(User.full_name).all()]
 
@@ -183,6 +248,21 @@ def create_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
+    _check_role(current_user, payload.role)
+    if payload.community_id and not can_see_community(db, current_user, payload.community_id):
+        raise forbid()
+    if payload.water_committee_id and not can_see_committee(db, current_user, payload.water_committee_id):
+        raise forbid()
+    partner_id = payload.partner_id if current_user.role == UserRole.SUPER_ADMIN else current_user.partner_id
+    water_committee_id = payload.water_committee_id or current_user.water_committee_id
+    community_id = payload.community_id
+    if community_id is None and payload.role in (UserRole.OPERATOR, UserRole.READER, UserRole.TREASURER):
+        community_id = current_user.community_id
+    if community_id and water_committee_id is None:
+        community = db.query(Community).filter(Community.id == community_id).first()
+        if community:
+            water_committee_id = community.water_committee_id
+            partner_id = partner_id or community.partner_id
     user = User(
         email=payload.email,
         hashed_password=get_password_hash(payload.password),
@@ -190,10 +270,13 @@ def create_user(
         phone=payload.phone,
         role=payload.role,
         preferred_language=payload.preferred_language,
-        partner_id=payload.partner_id or current_user.partner_id,
-        community_id=payload.community_id or current_user.community_id,
+        partner_id=partner_id,
+        water_committee_id=water_committee_id,
+        community_id=community_id,
     )
     db.add(user)
+    db.flush()
+    _apply_assignments(db, current_user, user, payload.assigned_community_ids)
     db.commit()
     db.refresh(user)
     return _user_response(user)
