@@ -67,6 +67,10 @@ class ReadingRepository(
                 lastReadingValue = it.lastReadingValue,
                 lastReadingDate = it.lastReadingDate,
                 avgConsumptionM3 = it.avgConsumptionM3,
+                communityName = it.communityName,
+                daysSinceLastReading = it.daysSinceLastReading,
+                expectedConsumptionM3 = it.expectedConsumptionM3,
+                expectedReadingValue = it.expectedReadingValue,
                 syncedAt = now,
             )
         }
