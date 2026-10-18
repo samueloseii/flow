@@ -13,6 +13,9 @@ const BillingPage = lazy(() => import('./components/billing/BillingPage'))
 const ExpensesPage = lazy(() => import('./components/expenses/ExpensesPage'))
 const MaintenancePage = lazy(() => import('./components/maintenance/MaintenancePage'))
 const AnalyticsPage = lazy(() => import('./components/reports/AnalyticsPage'))
+const WaterCommitteesPage = lazy(() => import('./components/committees/WaterCommitteesPage'))
+const TariffsPage = lazy(() => import('./components/tariffs/TariffsPage'))
+const ReadingsPage = lazy(() => import('./components/readings/ReadingsPage'))
 const UsersPage = lazy(() => import('./components/users/UsersPage'))
 const FieldView = lazy(() => import('./components/field/FieldView'))
 const PrintBill = lazy(() => import('./components/billing/PrintBill'))
@@ -58,9 +61,12 @@ export default function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/water-committees" element={<WaterCommitteesPage />} />
         <Route path="/communities" element={<CommunitiesPage />} />
         <Route path="/households" element={<HouseholdsPage />} />
         <Route path="/households/:householdId" element={<HouseholdDetailPage />} />
+        <Route path="/readings" element={<ReadingsPage />} />
+        <Route path="/tariffs" element={<TariffsPage />} />
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/billing/print" element={<PrintBill />} />
         <Route path="/expenses" element={<ExpensesPage />} />
