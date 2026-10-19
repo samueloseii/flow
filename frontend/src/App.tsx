@@ -63,10 +63,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
-        <Route path="/structure" element={<StructurePage level="root" />} />
-        <Route path="/structure/partner/:id" element={<StructurePage level="partner" />} />
-        <Route path="/structure/committee/:id" element={<StructurePage level="committee" />} />
-        <Route path="/structure/community/:id" element={<StructurePage level="community" />} />
+        <Route path="/structure" element={<StructurePage />} />
         <Route path="/partners" element={<PartnersPage />} />
         <Route path="/water-committees" element={<WaterCommitteesPage />} />
         <Route path="/communities" element={<CommunitiesPage />} />
