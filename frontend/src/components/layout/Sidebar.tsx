@@ -2,20 +2,17 @@ import { FormEvent, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
-  MapPin,
-  Home,
   Receipt,
   Wallet,
   Wrench,
   BarChart3,
   UserCog,
-  Building2,
   Gauge,
   Calculator,
   LogOut,
   KeyRound,
   Droplets,
-  Handshake,
+  Network,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import api from '../../services/api'
@@ -27,19 +24,13 @@ const ALL = ['super_admin', 'partner_admin', 'community_admin', 'treasurer', 're
 const MONEY = ['super_admin', 'partner_admin', 'community_admin', 'treasurer']
 const MANAGE = ['super_admin', 'partner_admin', 'community_admin']
 
-// Each level of the hierarchy only sees its own branch:
-// system admin starts at Partners, partner admin at Water committees,
-// committee admin / treasurer at Communities, a viewer at whatever they were given.
+// One "Structure" entry walks the tree Partner → Water committee → Community → Household → Meter,
+// starting at the account's own level, so communities and households are never shown as peers.
 const navGroups: { label: string; items: NavItem[] }[] = [
   { label: '', items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ALL }] },
   {
     label: 'Structure',
-    items: [
-      { to: '/partners', icon: Handshake, label: 'Partners', roles: ['super_admin'] },
-      { to: '/water-committees', icon: Building2, label: 'Water committees', roles: ['super_admin', 'partner_admin', 'reader'] },
-      { to: '/communities', icon: MapPin, label: 'Communities', roles: ALL },
-      { to: '/households', icon: Home, label: 'Households', roles: ALL },
-    ],
+    items: [{ to: '/structure', icon: Network, label: 'Structure', roles: ALL }],
   },
   {
     label: 'Operations',
@@ -67,10 +58,6 @@ function visibleGroups(user: { role: string; partner_id?: string | null; water_c
       ...g,
       items: g.items.filter((item) => {
         if (item.roles && !item.roles.includes(user.role)) return false
-        if (user.role !== 'reader') return true
-        // Viewers only see the levels at or below the one they are attached to.
-        if (item.to === '/water-committees') return !user.water_committee_id && !user.community_id && !user.household_id
-        if (item.to === '/communities') return !user.household_id
         return true
       }),
     }))
