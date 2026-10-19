@@ -16,7 +16,7 @@ from app.models.community import Community
 from app.models.household import Household
 from app.models.meter import Meter, MeterReading, MeterStatus
 from app.models.user import User
-from app.services.scope import require_community, visible_community_ids
+from app.services.scope import require_community, visible_community_ids, visible_household_ids
 
 router = APIRouter(prefix="/readings", tags=["readings"])
 
@@ -69,6 +69,9 @@ def list_raw_readings(
     ids = visible_community_ids(db, current_user)
     if ids is not None:
         query = query.filter(Household.community_id.in_(ids)) if ids else query.filter(False)
+    household_ids = visible_household_ids(db, current_user)
+    if household_ids is not None:
+        query = query.filter(Household.id.in_(household_ids))
     if water_committee_id:
         query = query.filter(Community.water_committee_id == water_committee_id)
     if community_id:
@@ -119,8 +122,13 @@ def list_raw_readings(
 
 REQUIRED_COLUMNS = ("account_number", "head_of_household")
 OPTIONAL_COLUMNS = (
-    "address", "phone", "members_count", "meter_serial_number", "meter_brand",
-    "meter_initial_reading", "notes",
+    "address",
+    "phone",
+    "members_count",
+    "meter_serial_number",
+    "meter_brand",
+    "meter_initial_reading",
+    "notes",
 )
 
 
@@ -185,7 +193,11 @@ async def import_households(
         account = data.get("account_number", "")
         name = data.get("head_of_household", "")
         if not account or not name:
-            errors.append(ImportRowError(row=index, message="account_number and head_of_household are required"))
+            errors.append(
+                ImportRowError(
+                    row=index, message="account_number and head_of_household are required"
+                )
+            )
             continue
         if account in existing_accounts or account in seen_accounts:
             errors.append(ImportRowError(row=index, message=f"Account {account} already exists"))
@@ -198,7 +210,11 @@ async def import_households(
             members = int(data.get("members_count") or 1)
             initial = float(data.get("meter_initial_reading") or 0)
         except ValueError:
-            errors.append(ImportRowError(row=index, message="members_count and meter_initial_reading must be numbers"))
+            errors.append(
+                ImportRowError(
+                    row=index, message="members_count and meter_initial_reading must be numbers"
+                )
+            )
             continue
         household = Household(
             account_number=account,

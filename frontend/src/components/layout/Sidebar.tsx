@@ -15,47 +15,75 @@ import {
   LogOut,
   KeyRound,
   Droplets,
+  Handshake,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import api from '../../services/api'
 import { Field, Modal, inputClass, primaryButtonClass, secondaryButtonClass } from '../ui'
 
-const navGroups = [
-  { label: '', items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard' }] },
+type NavItem = { to: string; icon: typeof LayoutDashboard; label: string; roles?: string[] }
+
+const ALL = ['super_admin', 'partner_admin', 'community_admin', 'treasurer', 'reader']
+const MONEY = ['super_admin', 'partner_admin', 'community_admin', 'treasurer']
+const MANAGE = ['super_admin', 'partner_admin', 'community_admin']
+
+// Each level of the hierarchy only sees its own branch:
+// system admin starts at Partners, partner admin at Water committees,
+// committee admin / treasurer at Communities, a viewer at whatever they were given.
+const navGroups: { label: string; items: NavItem[] }[] = [
+  { label: '', items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ALL }] },
   {
     label: 'Structure',
     items: [
-      { to: '/water-committees', icon: Building2, label: 'Water committees' },
-      { to: '/communities', icon: MapPin, label: 'Communities' },
-      { to: '/households', icon: Home, label: 'Households' },
+      { to: '/partners', icon: Handshake, label: 'Partners', roles: ['super_admin'] },
+      { to: '/water-committees', icon: Building2, label: 'Water committees', roles: ['super_admin', 'partner_admin', 'reader'] },
+      { to: '/communities', icon: MapPin, label: 'Communities', roles: ALL },
+      { to: '/households', icon: Home, label: 'Households', roles: ALL },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { to: '/readings', icon: Gauge, label: 'Meter readings' },
-      { to: '/billing', icon: Receipt, label: 'Billing' },
-      { to: '/tariffs', icon: Calculator, label: 'Tariffs' },
-      { to: '/expenses', icon: Wallet, label: 'Expenses' },
-      { to: '/maintenance', icon: Wrench, label: 'Maintenance' },
+      { to: '/readings', icon: Gauge, label: 'Meter readings', roles: ALL },
+      { to: '/billing', icon: Receipt, label: 'Billing', roles: ALL },
+      { to: '/tariffs', icon: Calculator, label: 'Tariffs', roles: MONEY },
+      { to: '/expenses', icon: Wallet, label: 'Expenses', roles: MONEY },
+      { to: '/maintenance', icon: Wrench, label: 'Maintenance', roles: MONEY },
     ],
   },
   {
     label: 'Oversight',
     items: [
-      { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-      { to: '/team', icon: UserCog, label: 'Team' },
+      { to: '/analytics', icon: BarChart3, label: 'Analytics', roles: MONEY },
+      { to: '/team', icon: UserCog, label: 'Team', roles: [...MANAGE, 'treasurer'] },
     ],
   },
 ]
 
+function visibleGroups(user: { role: string; partner_id?: string | null; water_committee_id?: string | null; community_id?: string | null; household_id?: string | null } | null) {
+  if (!user) return []
+  return navGroups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((item) => {
+        if (item.roles && !item.roles.includes(user.role)) return false
+        if (user.role !== 'reader') return true
+        // Viewers only see the levels at or below the one they are attached to.
+        if (item.to === '/water-committees') return !user.water_committee_id && !user.community_id && !user.household_id
+        if (item.to === '/communities') return !user.household_id
+        return true
+      }),
+    }))
+    .filter((g) => g.items.length > 0)
+}
+
 const roleLabels: Record<string, string> = {
-  super_admin: 'Super Admin',
-  partner_admin: 'Partner Admin',
+  super_admin: 'System administrator',
+  partner_admin: 'Partner administrator',
   community_admin: 'Water committee administrator',
   treasurer: 'Treasurer',
   operator: 'Operator',
-  reader: 'Viewer',
+  reader: 'Viewer (read-only)',
 }
 
 export default function Sidebar() {
@@ -96,7 +124,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 py-3 overflow-y-auto">
-        {navGroups.map((group) => (
+        {visibleGroups(user).map((group) => (
           <div key={group.label || 'top'} className="mb-2">
             {group.label && (
               <p className="px-6 pt-3 pb-1 text-[11px] uppercase tracking-wider text-primary-400">{group.label}</p>

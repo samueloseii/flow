@@ -16,6 +16,7 @@ from app.services.scope import (
     can_see_committee,
     can_see_community,
     forbid,
+    require_household,
     visible_committee_ids,
     visible_community_ids,
 )
@@ -43,6 +44,7 @@ def _user_response(user: User) -> UserResponse:
         partner_id=str(user.partner_id) if user.partner_id else None,
         water_committee_id=str(user.water_committee_id) if user.water_committee_id else None,
         community_id=str(user.community_id) if user.community_id else None,
+        household_id=str(user.household_id) if user.household_id else None,
         assigned_community_ids=[str(c.id) for c in user.assigned_communities],
     )
 
@@ -79,7 +81,6 @@ def _apply_assignments(db: Session, actor: User, user: User, ids: list[uuid.UUID
         user.community_id = communities[0].id
 
 
-
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
@@ -94,9 +95,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             detail="This account is disabled. Ask your administrator to restore it.",
         )
     expires = (
-        timedelta(minutes=settings.FIELD_TOKEN_EXPIRE_MINUTES)
-        if user.role in FIELD_ROLES
-        else None
+        timedelta(minutes=settings.FIELD_TOKEN_EXPIRE_MINUTES) if user.role in FIELD_ROLES else None
     )
     token = create_access_token(
         data={"sub": str(user.id), "role": user.role.value}, expires_delta=expires
@@ -183,6 +182,14 @@ def update_user(
         if not can_see_committee(db, current_user, payload.water_committee_id):
             raise forbid()
         user.water_committee_id = payload.water_committee_id
+    if payload.clear_household or user.role != UserRole.READER:
+        user.household_id = None
+    elif payload.household_id is not None:
+        household = require_household(db, current_user, payload.household_id)
+        user.household_id = household.id
+        user.community_id = household.community_id
+    if payload.partner_id is not None and current_user.role == UserRole.SUPER_ADMIN:
+        user.partner_id = payload.partner_id
     _apply_assignments(db, current_user, user, payload.assigned_community_ids)
     db.commit()
     db.refresh(user)
@@ -251,12 +258,24 @@ def create_user(
     _check_role(current_user, payload.role)
     if payload.community_id and not can_see_community(db, current_user, payload.community_id):
         raise forbid()
-    if payload.water_committee_id and not can_see_committee(db, current_user, payload.water_committee_id):
+    if payload.water_committee_id and not can_see_committee(
+        db, current_user, payload.water_committee_id
+    ):
         raise forbid()
-    partner_id = payload.partner_id if current_user.role == UserRole.SUPER_ADMIN else current_user.partner_id
+    partner_id = (
+        payload.partner_id if current_user.role == UserRole.SUPER_ADMIN else current_user.partner_id
+    )
     water_committee_id = payload.water_committee_id or current_user.water_committee_id
     community_id = payload.community_id
-    if community_id is None and payload.role in (UserRole.OPERATOR, UserRole.READER, UserRole.TREASURER):
+    household_id = payload.household_id if payload.role == UserRole.READER else None
+    if household_id:
+        household = require_household(db, current_user, household_id)
+        community_id = community_id or household.community_id
+    if community_id is None and payload.role in (
+        UserRole.OPERATOR,
+        UserRole.READER,
+        UserRole.TREASURER,
+    ):
         community_id = current_user.community_id
     if community_id and water_committee_id is None:
         community = db.query(Community).filter(Community.id == community_id).first()
@@ -273,6 +292,7 @@ def create_user(
         partner_id=partner_id,
         water_committee_id=water_committee_id,
         community_id=community_id,
+        household_id=household_id,
     )
     db.add(user)
     db.flush()
