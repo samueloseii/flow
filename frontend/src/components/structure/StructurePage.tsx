@@ -1,177 +1,182 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { Building2, ChevronRight, Handshake, Home, MapPin } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Building2, ChevronDown, ChevronRight, Gauge, Handshake, Home, MapPin, Network } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { Card, EmptyState, PageHeader, Spinner, secondaryButtonClass } from '../ui'
 
-type Level = 'root' | 'partner' | 'committee' | 'community'
-
-interface Partner { id: string; name: string; country: string; communities_count: number }
-interface Committee { id: string; name: string; partner_id: string; partner_name: string | null; region: string | null; community_count: number; household_count: number }
-interface Community { id: string; name: string; region: string | null; partner_id: string; water_committee_id: string | null; water_committee_name: string | null; total_connections: number }
-interface Household { id: string; account_number: string; head_of_household: string; address: string | null; has_meter: boolean; status: string; outstanding_balance: number; community_id: string }
+interface Partner { id: string; name: string; country: string }
+interface Committee { id: string; name: string; partner_id: string; region: string | null }
+interface Community { id: string; name: string; partner_id: string; water_committee_id: string | null }
+interface Household { id: string; account_number: string; head_of_household: string; community_id: string; status: string }
+interface Meter { id: string; serial_number: string; status: string; household_id: string; last_reading_value: number }
 
 const MANAGE = ['super_admin', 'partner_admin', 'community_admin']
 
-// One page that walks the tree: Partner → Water committee → Community → Household.
-// The account's level decides where the walk starts; everything above it is hidden.
-export default function StructurePage({ level }: { level: Level }) {
-  const { id } = useParams()
+// The whole hierarchy as one expandable outline, the way the committee drew it:
+// Partner → Water committee → Community → Household → Meter (removed meters stay listed).
+// Each account only receives its own branch from the API, so the outline starts at its level.
+export default function StructurePage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [partners, setPartners] = useState<Partner[]>([])
   const [committees, setCommittees] = useState<Committee[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
   const [households, setHouseholds] = useState<Household[]>([])
+  const [meters, setMeters] = useState<Meter[]>([])
   const [loading, setLoading] = useState(true)
-
-  const canManage = !!user && MANAGE.includes(user.role)
-
-  // Where this account's branch starts.
-  const start = useMemo(() => {
-    if (!user) return null
-    if (user.household_id) return { level: 'household' as const, id: user.household_id }
-    if (user.community_id && user.role === 'reader') return { level: 'community' as const, id: user.community_id }
-    if (user.water_committee_id) return { level: 'committee' as const, id: user.water_committee_id }
-    if (user.partner_id) return { level: 'partner' as const, id: user.partner_id }
-    return { level: 'root' as const, id: null }
-  }, [user])
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    const wantsPartners = user.role === 'super_admin'
+    const get = (url: string, params?: object) => api.get(url, { params }).then((r) => r.data).catch(() => [])
     Promise.all([
-      wantsPartners ? api.get('/partners/').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-      api.get('/water-committees/').catch(() => ({ data: [] })),
-      api.get('/communities/').catch(() => ({ data: [] })),
-      level === 'community' || level === 'committee' ? api.get('/households/', level === 'community' ? { params: { community_id: id } } : undefined).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-    ])
-      .then(([p, wc, c, h]) => { setPartners(p.data); setCommittees(wc.data); setCommunities(c.data); setHouseholds(h.data) })
-      .finally(() => setLoading(false))
-  }, [user, level, id])
+      user.role === 'super_admin' ? get('/partners/') : Promise.resolve([]),
+      get('/water-committees/'),
+      get('/communities/'),
+      get('/households/', { limit: 1000 }),
+      get('/meters/', { limit: 1000 }),
+    ]).then(([p, wc, c, h, m]) => {
+      setPartners(p); setCommittees(wc); setCommunities(c); setHouseholds(h); setMeters(m)
+    }).finally(() => setLoading(false))
+  }, [user])
 
-  if (!user || !start) return null
-  // Jump straight to the account's own level when the root is requested.
-  if (level === 'root' && start.level !== 'root') {
-    if (start.level === 'household') return <Navigate to={`/households/${start.id}`} replace />
-    return <Navigate to={`/structure/${start.level}/${start.id}`} replace />
-  }
+  const canManage = !!user && MANAGE.includes(user.role)
+  const toggle = (id: string) => setCollapsed((s) => ({ ...s, [id]: !s[id] }))
+
+  // Group children under their parents once.
+  const byParent = useMemo(() => ({
+    committees: group(committees, (c) => c.partner_id),
+    communities: group(communities, (c) => c.water_committee_id ?? `partner:${c.partner_id}`),
+    households: group(households, (h) => h.community_id),
+    meters: group(meters, (m) => m.household_id),
+  }), [committees, communities, households, meters])
+
+  if (!user) return null
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>
 
-  const partner = level === 'partner' ? partners.find((p) => p.id === id) : undefined
-  const committee = level === 'committee' ? committees.find((c) => c.id === id) : undefined
-  const community = level === 'community' ? communities.find((c) => c.id === id) : undefined
-  const parentCommittee = community ? committees.find((c) => c.id === community.water_committee_id) : level === 'committee' ? committee : undefined
-  const parentPartner = parentCommittee ? partners.find((p) => p.id === parentCommittee.partner_id) : partner
-
-  // Breadcrumb trimmed to what this account is allowed to see.
-  const crumbs: { label: string; to?: string }[] = []
-  if (start.level === 'root') {
-    crumbs.push({ label: 'Partners', to: '/structure' })
-    if (parentPartner) crumbs.push({ label: parentPartner.name, to: level === 'partner' ? undefined : `/structure/partner/${parentPartner.id}` })
+  const meterRow = (m: Meter) => (
+    <Row key={m.id} depth={4} icon={Gauge} title={m.serial_number}
+      meta={m.status === 'active' ? `last reading ${m.last_reading_value} m³` : m.status}
+      muted={m.status !== 'active'} />
+  )
+  const householdRow = (h: Household) => {
+    const ms = byParent.meters[h.id] ?? []
+    return (
+      <Row key={h.id} depth={3} icon={Home} title={h.head_of_household} meta={h.account_number} to={`/households/${h.id}`}
+        count={`${ms.length} meter${ms.length === 1 ? '' : 's'}`} muted={h.status !== 'active'}
+        open={!collapsed[h.id]} onToggle={ms.length ? () => toggle(h.id) : undefined}>
+        {ms.map(meterRow)}
+      </Row>
+    )
   }
-  if (parentCommittee && level !== 'partner' && start.level !== 'community') {
-    crumbs.push({ label: parentCommittee.name, to: level === 'committee' ? undefined : `/structure/committee/${parentCommittee.id}` })
+  const communityRow = (c: Community) => {
+    const hs = byParent.households[c.id] ?? []
+    return (
+      <Row key={c.id} depth={2} icon={MapPin} title={c.name} count={`${hs.length} household${hs.length === 1 ? '' : 's'}`}
+        open={!collapsed[c.id]} onToggle={hs.length ? () => toggle(c.id) : undefined}>
+        {hs.map(householdRow)}
+      </Row>
+    )
   }
-  if (community) crumbs.push({ label: community.name })
+  const committeeRow = (w: Committee) => {
+    const cs = byParent.communities[w.id] ?? []
+    return (
+      <Row key={w.id} depth={1} icon={Building2} title={w.name} meta={w.region ?? ''} count={`${cs.length} communit${cs.length === 1 ? 'y' : 'ies'}`}
+        open={!collapsed[w.id]} onToggle={cs.length ? () => toggle(w.id) : undefined}>
+        {cs.map(communityRow)}
+      </Row>
+    )
+  }
+  const partnerRow = (p: Partner) => {
+    const ws = byParent.committees[p.id] ?? []
+    const loose = byParent.communities[`partner:${p.id}`] ?? []
+    return (
+      <Row key={p.id} depth={0} icon={Handshake} title={p.name} meta={p.country} count={`${ws.length} water committee${ws.length === 1 ? '' : 's'}`}
+        open={!collapsed[p.id]} onToggle={ws.length + loose.length ? () => toggle(p.id) : undefined}>
+        {ws.map(committeeRow)}
+        {loose.map(communityRow)}
+      </Row>
+    )
+  }
 
-  const title = level === 'root' ? 'Partners' : level === 'partner' ? partner?.name ?? 'Partner' : level === 'committee' ? committee?.name ?? 'Water committee' : community?.name ?? 'Community'
-  const subtitle = level === 'root' ? 'Each partner supports one or more water committees.'
-    : level === 'partner' ? 'Water committees supported by this partner.'
-    : level === 'committee' ? 'Communities administered by this water committee.'
-    : 'Households served in this community; open one for its meters and readings.'
-
-  const manageLink = level === 'root' ? { to: '/partners', label: 'Manage partners' }
-    : level === 'partner' ? { to: '/water-committees', label: 'Manage water committees' }
-    : level === 'committee' ? { to: '/communities', label: 'Manage communities' }
-    : { to: '/households', label: 'Manage households' }
+  // What the top of this account's branch is.
+  let top: React.ReactNode
+  let title = 'Structure'
+  let subtitle = 'Partner → Water committee → Community → Household → Meter'
+  if (user.role === 'super_admin') {
+    title = 'All partners'
+    top = partners.length ? partners.map(partnerRow) : null
+  } else if (user.household_id) {
+    title = 'Your household'
+    top = households.map(householdRow)
+  } else if (user.role === 'reader' && user.community_id) {
+    title = communities[0]?.name ?? 'Your community'
+    top = communities.map(communityRow)
+  } else if (user.water_committee_id) {
+    const w = committees.find((x) => x.id === user.water_committee_id)
+    title = w?.name ?? 'Your water committee'
+    subtitle = 'Communities, households and meters under this water committee.'
+    top = (byParent.communities[user.water_committee_id] ?? []).map(communityRow)
+  } else {
+    title = 'Water committees you support'
+    top = committees.map(committeeRow)
+  }
+  const empty = !top || (Array.isArray(top) && top.length === 0)
 
   return (
     <div>
-      {crumbs.length > 1 && (
-        <nav className="flex items-center gap-1 text-sm text-gray-500 mb-4">
-          {crumbs.map((c, i) => (
-            <span key={i} className="flex items-center gap-1">
-              {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-gray-300" />}
-              {c.to ? <Link to={c.to} className="hover:text-gray-900">{c.label}</Link> : <span className="text-gray-900 font-medium">{c.label}</span>}
-            </span>
-          ))}
-        </nav>
-      )}
-      <PageHeader
-        title={title}
-        subtitle={subtitle}
-        actions={canManage && <Link to={manageLink.to} className={secondaryButtonClass}>{manageLink.label}</Link>}
-      />
-
-      {level === 'root' && (
-        <Rows
-          empty={{ icon: Handshake, title: 'No partners yet', hint: canManage ? 'Add the first partner organisation under Manage partners.' : undefined }}
-          rows={partners.map((p) => ({
-            key: p.id, icon: Handshake, title: p.name, meta: p.country,
-            counts: `${committees.filter((c) => c.partner_id === p.id).length} water committees · ${p.communities_count} communities`,
-            onClick: () => navigate(`/structure/partner/${p.id}`),
-          }))}
-        />
-      )}
-      {level === 'partner' && (
-        <Rows
-          empty={{ icon: Building2, title: 'No water committees under this partner' }}
-          rows={committees.filter((c) => c.partner_id === id).map((c) => ({
-            key: c.id, icon: Building2, title: c.name, meta: c.region ?? '',
-            counts: `${c.community_count} communities · ${c.household_count} households`,
-            onClick: () => navigate(`/structure/committee/${c.id}`),
-          }))}
-        />
-      )}
-      {level === 'committee' && (
-        <Rows
-          empty={{ icon: MapPin, title: 'No communities under this water committee', hint: canManage ? 'Add one under Manage communities.' : undefined }}
-          rows={communities.filter((c) => c.water_committee_id === id).map((c) => ({
-            key: c.id, icon: MapPin, title: c.name, meta: c.region ?? '',
-            counts: `${households.filter((h) => h.community_id === c.id).length} households`,
-            onClick: () => navigate(`/structure/community/${c.id}`),
-          }))}
-        />
-      )}
-      {level === 'community' && (
-        <Rows
-          empty={{ icon: Home, title: 'No households in this community', hint: canManage ? 'Register households one by one or import a CSV under Manage households.' : undefined }}
-          rows={households.map((h) => ({
-            key: h.id, icon: Home, title: h.head_of_household, meta: `${h.account_number}${h.address ? ` · ${h.address}` : ''}`,
-            counts: h.has_meter ? 'Meter fitted' : 'No meter',
-            onClick: () => navigate(`/households/${h.id}`),
-          }))}
-        />
-      )}
+      <PageHeader title={title} subtitle={subtitle}
+        actions={canManage && (
+          <>
+            {user.role === 'super_admin' && <Link to="/partners" className={secondaryButtonClass}>Partners</Link>}
+            {['super_admin', 'partner_admin'].includes(user.role) && <Link to="/water-committees" className={secondaryButtonClass}>Water committees</Link>}
+            <Link to="/communities" className={secondaryButtonClass}>Communities</Link>
+            <Link to="/households" className={secondaryButtonClass}>Households &amp; import</Link>
+          </>
+        )} />
+      <Card>
+        {empty ? (
+          <EmptyState icon={Network} title="Nothing in this branch yet" hint={canManage ? 'Use the buttons above to add the first level.' : undefined} />
+        ) : (
+          <ul className="py-2">{top}</ul>
+        )}
+      </Card>
     </div>
   )
 }
 
-function Rows({ rows, empty }: {
-  rows: { key: string; icon: React.ComponentType<{ className?: string }>; title: string; meta: string; counts: string; onClick: () => void }[]
-  empty: { icon: React.ComponentType<{ className?: string }>; title: string; hint?: string }
+function group<T>(items: T[], key: (t: T) => string): Record<string, T[]> {
+  const out: Record<string, T[]> = {}
+  for (const it of items) (out[key(it)] ??= []).push(it)
+  return out
+}
+
+function Row({ depth, icon: Icon, title, meta, count, to, muted, open, onToggle, children }: {
+  depth: number
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  meta?: string
+  count?: string
+  to?: string
+  muted?: boolean
+  open?: boolean
+  onToggle?: () => void
+  children?: React.ReactNode
 }) {
-  if (rows.length === 0) return <Card><EmptyState {...empty} /></Card>
+  const hasChildren = !!onToggle
   return (
-    <Card>
-      <ul className="divide-y divide-gray-100">
-        {rows.map((r) => (
-          <li key={r.key}>
-            <button type="button" onClick={r.onClick} className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-gray-50">
-              <r.icon className="h-5 w-5 text-primary-500 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 truncate">{r.title}</p>
-                {r.meta && <p className="text-sm text-gray-500 truncate">{r.meta}</p>}
-              </div>
-              <span className="text-sm text-gray-500 hidden sm:block">{r.counts}</span>
-              <ChevronRight className="h-4 w-4 text-gray-300" />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </Card>
+    <li>
+      <div className={`flex items-center gap-2 py-2 pr-5 hover:bg-gray-50 ${muted ? 'text-gray-400' : 'text-gray-900'}`} style={{ paddingLeft: 16 + depth * 28 }}>
+        <button type="button" onClick={onToggle} disabled={!hasChildren} className="h-5 w-5 flex items-center justify-center text-gray-400 disabled:opacity-0">
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+        <Icon className={`h-4 w-4 shrink-0 ${muted ? 'text-gray-300' : 'text-primary-500'}`} />
+        {to ? <Link to={to} className="font-medium hover:underline truncate">{title}</Link> : <span className="font-medium truncate">{title}</span>}
+        {meta && <span className="text-sm text-gray-500 truncate">· {meta}</span>}
+        {count && <span className="ml-auto text-xs text-gray-400">{count}</span>}
+      </div>
+      {open && children && <ul>{children}</ul>}
+    </li>
   )
 }
