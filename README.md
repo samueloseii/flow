@@ -12,7 +12,7 @@ backend/          FastAPI + PostgreSQL + SQLAlchemy
     models/       SQLAlchemy ORM models
     schemas/      Pydantic request/response schemas
     core/         Config, security, JWT auth
-    db/           Database session, seed data
+    db/           Database session, bootstrap, migrations, optional local sample data
 frontend/         React + TypeScript + Tailwind CSS + Vite
   src/
     components/   Dashboard, communities, households, meters, billing, maintenance, analytics pages
@@ -20,39 +20,73 @@ frontend/         React + TypeScript + Tailwind CSS + Vite
     services/     API client (axios)
 ```
 
-## Quick Start
+## Running it on your laptop (for testing)
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 14+
+You do not need Postgres or Docker to try Flow locally; a SQLite file is enough.
 
-### Backend Setup
+### 1. Backend
 ```bash
 cd backend
-python -m venv venv && source venv/bin/activate
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env  # edit DATABASE_URL if needed
 
-# Start the server (auto-creates tables)
+export DATABASE_URL=sqlite:///./flow-local.db
+export ADMIN_EMAIL=admin@example.com
+export ADMIN_PASSWORD=admin123
 uvicorn app.main:app --reload --port 8000
-
-# Seed demo data
-python -m app.db.seed
 ```
+On first start the tables are created and one **system administrator** account is made
+from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Nothing else is created.
 
-### Frontend Setup
+### 2. Frontend
 ```bash
 cd frontend
 npm install
-npm run dev   # starts on http://localhost:3000
+npm run dev        # http://localhost:3000, talks to the backend on port 8000
 ```
 
-### Demo Login
-- **Email:** `admin@flow.app`
-- **Password:** `admin123`
+### 3. Sign in and build the tree
+Sign in as `admin@example.com` / `admin123`, then create things top-down:
 
-### Docker
+1. **Partners** → the supporting organization
+2. **Water committees** → under the partner
+3. **Communities** → under the committee
+4. **Households** → by hand or **Import CSV** (`account_number, head_of_household` required;
+   `meter_serial_number, meter_initial_reading, address, phone, members_count, notes` optional)
+5. **Tariffs** → a rising block tariff per committee; assign a special one to individual households if needed
+6. **Team** → accounts for the people who will use it (see roles below)
+
+### Local test accounts
+Optional. `python -m app.db.seed --demo` fills the database with made-up sample
+communities and these logins — **never run it against a production database**:
+
+| Role | Email | Password |
+|---|---|---|
+| System administrator | `admin@flow.app` | `admin123` |
+| Partner administrator | `admin@<partner>.org` | `partner123` |
+| Operator | see Team page | `operator123` |
+| Treasurer | see Team page | `treasurer123` |
+
+### Who sees what
+| Role | Sees | Can create accounts for |
+|---|---|---|
+| System administrator | everything | any role |
+| Partner administrator | all committees its partner supports | partner admin and below |
+| Water committee administrator | its committee's communities, households, money | committee admin and below |
+| Treasurer | same committee; billing, payments, expenses | treasurer, operator, viewer |
+| Operator | only the communities ticked on their account; records readings, adds/replaces meters (web field mode or Flow Reader) | — |
+| Viewer (read-only) | a partner, a committee, some communities, or one household | — |
+
+A viewer attached to a **single household** is a community member: they see only that
+household's readings and bills.
+
+### Android (Flow Reader)
+Open `android/` in Android Studio, or run `./gradlew assembleDebug`. To point it at
+your laptop instead of the live server:
+`./gradlew assembleDebug -PflowApiBaseUrl=http://10.0.2.2:8000/api/v1/` (emulator)
+or use your laptop's LAN IP for a real phone.
+
+### Docker (Postgres)
 ```bash
 docker-compose up -d
 ```

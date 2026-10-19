@@ -93,7 +93,7 @@ def reading_context(
 def create_meter(
     payload: MeterCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*ADMIN_ROLES)),
+    current_user: User = Depends(require_role(*READING_ROLES)),
 ):
     """Fit a meter. If the household already has an active one it is retired (replaced/removed)
     and the new meter becomes the one operators read; old readings stay on the old meter."""

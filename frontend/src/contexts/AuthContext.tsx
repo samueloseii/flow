@@ -7,6 +7,7 @@ export interface UserInfo {
   full_name: string
   role: string
   partner_id: string | null
+  household_id?: string | null
   community_id: string | null
 }
 
@@ -26,8 +27,8 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | null>(null)
 
 // Treasurers administer billing from the office; only operators/readers work in the field.
-const ADMIN_ROLES = ['super_admin', 'partner_admin', 'community_admin', 'treasurer']
-const FIELD_ROLES = ['operator', 'reader']
+const ADMIN_ROLES = ['super_admin', 'partner_admin', 'community_admin', 'treasurer', 'reader']
+const FIELD_ROLES = ['operator']
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth] = useState<AuthState>({

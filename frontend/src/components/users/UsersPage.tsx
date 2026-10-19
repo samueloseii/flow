@@ -22,12 +22,26 @@ interface TeamMember {
   is_active: boolean
   community_id: string | null
   water_committee_id: string | null
+  partner_id?: string | null
+  household_id?: string | null
   assigned_community_ids: string[]
 }
 
 interface Committee {
   id: string
   name: string
+}
+
+interface Partner {
+  id: string
+  name: string
+}
+
+interface HouseholdOption {
+  id: string
+  account_number: string
+  head_of_household: string
+  community_id: string
 }
 
 interface Community {
@@ -42,7 +56,7 @@ const roleOptions = [
   { value: 'community_admin', label: 'Water committee administrator — runs the committee' },
   { value: 'partner_admin', label: 'Partner administrator — all committees the partner supports' },
   { value: 'super_admin', label: 'System administrator — everything' },
-  { value: 'reader', label: 'Viewer — read-only' },
+  { value: 'reader', label: 'Viewer — read-only at a partner, committee, community or single household' },
 ]
 
 const roleLabels: Record<string, string> = {
@@ -62,6 +76,8 @@ const emptyForm = {
   role: 'operator',
   community_id: '',
   water_committee_id: '',
+  partner_id: '',
+  household_id: '',
   assigned_community_ids: [] as string[],
 }
 
@@ -69,17 +85,21 @@ export default function UsersPage() {
   const [members, setMembers] = useState<TeamMember[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
   const [committees, setCommittees] = useState<Committee[]>([])
+  const [partners, setPartners] = useState<Partner[]>([])
+  const [households, setHouseholds] = useState<HouseholdOption[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<TeamMember | null>(null)
-  const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '', water_committee_id: '', assigned_community_ids: [] as string[] })
+  const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '', water_committee_id: '', partner_id: '', household_id: '', assigned_community_ids: [] as string[] })
 
   function load() {
     setLoading(true)
     api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
+    api.get('/partners/').then((r) => setPartners(r.data)).catch(() => setPartners([]))
+    api.get('/households/').then((r) => setHouseholds(r.data)).catch(() => setHouseholds([]))
     Promise.all([api.get('/auth/users'), api.get('/communities/')])
       .then(([usersRes, communitiesRes]) => {
         setMembers(usersRes.data)
@@ -104,6 +124,8 @@ export default function UsersPage() {
         role: form.role,
         community_id: form.community_id || null,
         water_committee_id: form.water_committee_id || null,
+        partner_id: form.partner_id || null,
+        household_id: form.role === 'reader' ? form.household_id || null : null,
         assigned_community_ids: form.role === 'operator' || form.role === 'reader' ? form.assigned_community_ids : [],
       })
       setShowForm(false)
@@ -130,6 +152,9 @@ export default function UsersPage() {
         clear_community: !editForm.community_id,
         water_committee_id: editForm.water_committee_id || null,
         clear_water_committee: !editForm.water_committee_id,
+        partner_id: editForm.partner_id || null,
+        household_id: editForm.role === 'reader' ? editForm.household_id || null : null,
+        clear_household: editForm.role !== 'reader' || !editForm.household_id,
         assigned_community_ids: editForm.assigned_community_ids,
       })
       setEditing(null)
@@ -224,6 +249,8 @@ export default function UsersPage() {
                             role: m.role,
                             community_id: m.community_id ?? '',
                             water_committee_id: m.water_committee_id ?? '',
+                            partner_id: m.partner_id ?? '',
+                            household_id: m.household_id ?? '',
                             assigned_community_ids: m.assigned_community_ids ?? [],
                           })
                           setError('')
@@ -310,6 +337,32 @@ export default function UsersPage() {
                   ))}
                 </select>
               </Field>
+              {editForm.role === 'reader' && (
+                <Field label="Single household (optional)" className="sm:col-span-2" hint="For a community member who should only see their own household's readings and bills">
+                  <select
+                    className={inputClass}
+                    value={editForm.household_id}
+                    onChange={(e) => setEditForm({ ...editForm, household_id: e.target.value })}
+                  >
+                    <option value="">Not limited to one household</option>
+                    {households.filter((h) => editForm.assigned_community_ids.length === 0 || editForm.assigned_community_ids.includes(h.community_id)).map((h) => (
+                      <option key={h.id} value={h.id}>{h.account_number} — {h.head_of_household}</option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {editForm.role === 'reader' && partners.length > 0 && (
+                <Field label="Partner (optional)" className="sm:col-span-2" hint="A partner viewer sees every committee the partner supports">
+                  <select
+                    className={inputClass}
+                    value={editForm.partner_id}
+                    onChange={(e) => setEditForm({ ...editForm, partner_id: e.target.value })}
+                  >
+                    <option value="">None</option>
+                    {partners.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                  </select>
+                </Field>
+              )}
               {(editForm.role === 'operator' || editForm.role === 'reader') ? (
                 <Field label="Communities to read" className="sm:col-span-2" hint="Tick every community this person covers">
                   <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 p-2">
@@ -434,6 +487,32 @@ export default function UsersPage() {
                   ))}
                 </select>
               </Field>
+              {form.role === 'reader' && (
+                <Field label="Single household (optional)" className="sm:col-span-2" hint="For a community member who should only see their own household's readings and bills">
+                  <select
+                    className={inputClass}
+                    value={form.household_id}
+                    onChange={(e) => setForm({ ...form, household_id: e.target.value })}
+                  >
+                    <option value="">Not limited to one household</option>
+                    {households.filter((h) => form.assigned_community_ids.length === 0 || form.assigned_community_ids.includes(h.community_id)).map((h) => (
+                      <option key={h.id} value={h.id}>{h.account_number} — {h.head_of_household}</option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {form.role === 'reader' && partners.length > 0 && (
+                <Field label="Partner (optional)" className="sm:col-span-2" hint="A partner viewer sees every committee the partner supports">
+                  <select
+                    className={inputClass}
+                    value={form.partner_id}
+                    onChange={(e) => setForm({ ...form, partner_id: e.target.value })}
+                  >
+                    <option value="">None</option>
+                    {partners.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                  </select>
+                </Field>
+              )}
               {(form.role === 'operator' || form.role === 'reader') ? (
                 <Field label="Communities to read" className="sm:col-span-2" hint="Tick every community this person covers">
                   <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 p-2">
