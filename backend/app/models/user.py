@@ -32,9 +32,7 @@ operator_communities = Table(
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
@@ -52,6 +50,10 @@ class User(Base):
     community_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("communities.id"), nullable=True
     )
+    # Community members: a viewer login limited to one household.
+    household_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("households.id"), nullable=True
+    )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -68,6 +70,7 @@ class User(Base):
     water_committee: Mapped["WaterCommittee | None"] = relationship(  # noqa: F821
         back_populates="users"
     )
+    household: Mapped["Household | None"] = relationship()  # noqa: F821
     assigned_communities: Mapped[list["Community"]] = relationship(  # noqa: F821
         secondary=operator_communities
     )
