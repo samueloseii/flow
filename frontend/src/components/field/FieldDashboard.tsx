@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { Gauge, Wrench, Wifi, WifiOff, ChevronRight } from 'lucide-react'
+import { Gauge, Wrench, Wifi, WifiOff, ChevronRight, Replace } from 'lucide-react'
 import api from '../../services/api'
 
 interface CommunityInfo {
@@ -14,6 +14,7 @@ interface CommunityInfo {
 
 interface HouseholdInfo {
   id: string
+  community_id: string
   account_number: string
   head_of_household: string
   members_count: number
@@ -22,12 +23,12 @@ interface HouseholdInfo {
 }
 
 interface Props {
-  onNavigate: (page: 'readings' | 'maintenance') => void
+  onNavigate: (page: 'readings' | 'maintenance' | 'meter') => void
 }
 
 export default function FieldDashboard({ onNavigate }: Props) {
   const { user } = useAuth()
-  const [community, setCommunity] = useState<CommunityInfo | null>(null)
+  const [communities, setCommunities] = useState<CommunityInfo[]>([])
   const [households, setHouseholds] = useState<HouseholdInfo[]>([])
   const [online, setOnline] = useState(navigator.onLine)
   const [loading, setLoading] = useState(true)
@@ -45,21 +46,14 @@ export default function FieldDashboard({ onNavigate }: Props) {
 
   useEffect(() => {
     if (!user) return
-    if (!user.community_id) {
-      setLoading(false)
-      return
-    }
-    Promise.all([
-      api.get(`/communities/${user.community_id}`),
-      api.get(`/households/?community_id=${user.community_id}`),
-    ])
+    Promise.all([api.get('/communities/'), api.get('/households/')])
       .then(([commRes, hhRes]) => {
-        setCommunity(commRes.data)
+        setCommunities(commRes.data)
         setHouseholds(hhRes.data)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [user?.community_id])
+  }, [user?.id])
 
   if (loading) {
     return (
@@ -69,13 +63,13 @@ export default function FieldDashboard({ onNavigate }: Props) {
     )
   }
 
-  if (!user?.community_id) {
+  if (communities.length === 0) {
     return (
       <div className="max-w-lg mx-auto bg-white rounded-xl border border-gray-100 p-6">
         <h1 className="text-lg font-semibold text-gray-900">No community assigned</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Your account is not linked to a community yet, so there are no households to read. Ask
-          your administrator to open Team, edit your account and choose your community.
+          Your account is not linked to any community yet, so there are no households to read. Ask
+          your administrator to open Team, edit your account and tick the communities you cover.
         </p>
       </div>
     )
@@ -91,14 +85,24 @@ export default function FieldDashboard({ onNavigate }: Props) {
         {online ? 'Online' : 'Offline — readings are saved on this phone and sent when you are back online'}
       </div>
 
-      {/* Community header */}
+      {/* Communities this operator covers */}
       <div className="bg-primary-600 text-white rounded-xl p-5 mb-6">
-        <p className="text-primary-200 text-sm">{community?.country}</p>
-        <h1 className="text-xl font-bold mt-1">{community?.name || 'My Community'}</h1>
-        <div className="flex gap-4 mt-3 text-sm">
-          <span>{activeCount} active households</span>
-          <span>{community?.currency} {community?.tariff_fixed?.toFixed(2)} base tariff</span>
-        </div>
+        <p className="text-primary-200 text-sm">{communities.length === 1 ? communities[0].country : `${communities.length} communities`}</p>
+        <h1 className="text-xl font-bold mt-1">{communities.length === 1 ? communities[0].name : 'My route'}</h1>
+        {communities.length > 1 ? (
+          <ul className="mt-3 space-y-1 text-sm">
+            {communities.map((c) => (
+              <li key={c.id} className="flex justify-between">
+                <span>{c.name}</span>
+                <span className="text-primary-200">{households.filter((h) => h.community_id === c.id && h.status === 'active').length} active households</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="flex gap-4 mt-3 text-sm">
+            <span>{activeCount} active households</span>
+          </div>
+        )}
       </div>
 
       {/* Quick stats */}
@@ -125,6 +129,20 @@ export default function FieldDashboard({ onNavigate }: Props) {
           <div className="flex-1">
             <p className="font-semibold text-gray-900">Record meter readings</p>
             <p className="text-sm text-gray-500">Go house-to-house, enter the dial value</p>
+          </div>
+          <ChevronRight className="h-5 w-5 text-gray-400" />
+        </button>
+
+        <button
+          onClick={() => onNavigate('meter')}
+          className="w-full flex items-center gap-4 p-4 bg-white rounded-xl border border-gray-100 hover:border-primary-200 hover:bg-primary-50 transition-colors text-left"
+        >
+          <div className="w-12 h-12 rounded-lg bg-teal-100 flex items-center justify-center">
+            <Replace className="h-6 w-6 text-teal-600" />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold text-gray-900">Add or replace a meter</p>
+            <p className="text-sm text-gray-500">Fit a new meter; the old one is retired with its history kept</p>
           </div>
           <ChevronRight className="h-5 w-5 text-gray-400" />
         </button>

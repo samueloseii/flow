@@ -6,6 +6,8 @@ import LoginPage from './components/auth/LoginPage'
 import { Spinner } from './components/ui'
 
 const DashboardPage = lazy(() => import('./components/dashboard/DashboardPage'))
+const PartnersPage = lazy(() => import('./components/partners/PartnersPage'))
+const StructurePage = lazy(() => import('./components/structure/StructurePage'))
 const CommunitiesPage = lazy(() => import('./components/communities/CommunitiesPage'))
 const HouseholdsPage = lazy(() => import('./components/households/HouseholdsPage'))
 const HouseholdDetailPage = lazy(() => import('./components/households/HouseholdDetailPage'))
@@ -61,6 +63,8 @@ export default function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/structure" element={<StructurePage />} />
+        <Route path="/partners" element={<PartnersPage />} />
         <Route path="/water-committees" element={<WaterCommitteesPage />} />
         <Route path="/communities" element={<CommunitiesPage />} />
         <Route path="/households" element={<HouseholdsPage />} />

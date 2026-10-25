@@ -15,7 +15,7 @@ def _login(client, email, password):
 
 def _setup(client, auth):
     partner = client.post(
-        f"{API}/partners/", json={"name": f"P-{uuid.uuid4().hex[:6]}", "country": "US"}, headers=auth
+        f"{API}/partners/", json={"name": f"P-{uuid.uuid4().hex[:6]}", "country": "US", "new_organization_name": "Test org"}, headers=auth
     ).json()
     assert "id" in partner, partner
     committee = client.post(
@@ -274,3 +274,69 @@ def test_meter_replacement_and_csv_import(client, auth):
         files={"file": ("h.csv", io.BytesIO(b"name\nx\n"), "text/csv")}, headers=auth,
     )
     assert r.status_code == 400
+
+
+def test_organization_level_and_structure_tree(client, auth):
+    org = client.post(f"{API}/organizations/", json={"name": f"Org-{uuid.uuid4().hex[:6]}"}, headers=auth)
+    assert org.status_code == 201, org.text
+    org = org.json()
+    # A partner must belong to an organization
+    r = client.post(f"{API}/partners/", json={"name": f"NoOrg-{uuid.uuid4().hex[:6]}", "country": "US"}, headers=auth)
+    assert r.status_code == 400
+    partner = client.post(
+        f"{API}/partners/",
+        json={"name": f"P-{uuid.uuid4().hex[:6]}", "country": "US", "organization_id": org["id"]},
+        headers=auth,
+    ).json()
+    assert partner["organization_id"] == org["id"]
+    committee = client.post(
+        f"{API}/water-committees/", json={"name": "Tree WC", "partner_id": partner["id"]}, headers=auth
+    ).json()
+    # A community must belong to a water committee
+    r = client.post(f"{API}/communities/", json={"name": "Loose", "country": "US"}, headers=auth)
+    assert r.status_code == 400
+    community = client.post(
+        f"{API}/communities/",
+        json={"name": "Tree Community", "country": "US", "water_committee_id": committee["id"]},
+        headers=auth,
+    ).json()
+    household = client.post(
+        f"{API}/households/",
+        json={"account_number": f"T-{uuid.uuid4().hex[:5]}", "head_of_household": "Tree Family",
+              "community_id": community["id"], "meter_serial_number": f"TM-{uuid.uuid4().hex[:6]}"},
+        headers=auth,
+    )
+    assert household.status_code == 201, household.text
+    household = household.json()
+    new_serial = f"TM-{uuid.uuid4().hex[:6]}"
+    r = client.post(
+        f"{API}/meters/",
+        json={"serial_number": new_serial, "household_id": household["id"], "retire_existing_as": "removed"},
+        headers=auth,
+    )
+    assert r.status_code == 201, r.text
+
+    tree = client.get(f"{API}/structure/tree", headers=auth).json()
+    assert tree["root_level"] == "organization"
+    org_node = next(n for n in tree["nodes"] if n["id"] == org["id"])
+    partner_node = next(n for n in org_node["children"] if n["id"] == partner["id"])
+    committee_node = next(n for n in partner_node["children"] if n["id"] == committee["id"])
+    community_node = next(n for n in committee_node["children"] if n["id"] == community["id"])
+    household_node = next(n for n in community_node["children"] if n["id"] == household["id"])
+    statuses = {m["name"]: m["status"] for m in household_node["children"]}
+    assert statuses[new_serial] == "active"
+    assert "removed" in statuses.values() and len(statuses) == 2
+
+    # A treasurer on this committee starts at the committee and sees nothing else
+    email = f"tr-{uuid.uuid4().hex[:6]}@flowtest.org"
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": email, "password": "treasurer-pass", "full_name": "Tree Treasurer",
+              "role": "treasurer", "water_committee_id": committee["id"]},
+        headers=auth,
+    )
+    assert r.status_code in (200, 201), r.text
+    t_tree = client.get(f"{API}/structure/tree", headers=_login(client, email, "treasurer-pass")).json()
+    assert t_tree["root_level"] == "committee"
+    assert [n["id"] for n in t_tree["nodes"]] == [committee["id"]]
+    assert client.get(f"{API}/organizations/", headers=_login(client, email, "treasurer-pass")).json() == []
