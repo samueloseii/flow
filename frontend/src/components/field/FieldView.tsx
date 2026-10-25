@@ -5,8 +5,9 @@ import { startAutoSync } from '../../services/syncService'
 import FieldDashboard from './FieldDashboard'
 import MeterReadingField from './MeterReadingField'
 import MaintenanceField from './MaintenanceField'
+import MeterReplaceField from './MeterReplaceField'
 
-type Page = 'home' | 'readings' | 'maintenance'
+type Page = 'home' | 'readings' | 'maintenance' | 'meter'
 
 export default function FieldView() {
   const { logout, user } = useAuth()
@@ -41,6 +42,9 @@ export default function FieldView() {
         )}
         {page === 'readings' && (
           <MeterReadingField onBack={() => setPage('home')} />
+        )}
+        {page === 'meter' && (
+          <MeterReplaceField onBack={() => setPage('home')} />
         )}
         {page === 'maintenance' && (
           <MaintenanceField onBack={() => setPage('home')} />

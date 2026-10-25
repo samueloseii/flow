@@ -14,8 +14,8 @@ android {
         applicationId = "org.flow.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // The live Flow API. Override with -PflowApiBaseUrl=... for a local server.
