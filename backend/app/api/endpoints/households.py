@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.api.deps import ADMIN_ROLES, get_current_user, require_role
+from app.api.deps import ADMIN_ROLES, READING_ROLES, get_current_user, require_role
 from app.db.session import get_db
 from app.models.billing import Invoice, Payment
 from app.models.community import Community
@@ -95,9 +95,9 @@ def list_households(
 def create_household(
     payload: HouseholdCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*ADMIN_ROLES)),
+    current_user: User = Depends(require_role(*READING_ROLES)),
 ):
-    """Register a water account. Only administrators may open accounts."""
+    """Register a water account. Administrators, or operators within their assigned communities."""
     require_community(db, current_user, payload.community_id)
     existing = (
         db.query(Household)
