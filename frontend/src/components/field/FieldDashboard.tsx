@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { Gauge, Wrench, Wifi, WifiOff, ChevronRight, Replace, Home } from 'lucide-react'
+import { Gauge, Wrench, Wifi, WifiOff, ChevronRight, Replace } from 'lucide-react'
 import api from '../../services/api'
 
 interface CommunityInfo {
@@ -23,7 +23,7 @@ interface HouseholdInfo {
 }
 
 interface Props {
-  onNavigate: (page: 'readings' | 'maintenance' | 'meter' | 'household') => void
+  onNavigate: (page: 'readings' | 'maintenance' | 'meter') => void
 }
 
 export default function FieldDashboard({ onNavigate }: Props) {
@@ -129,20 +129,6 @@ export default function FieldDashboard({ onNavigate }: Props) {
           <div className="flex-1">
             <p className="font-semibold text-gray-900">Record meter readings</p>
             <p className="text-sm text-gray-500">Go house-to-house, enter the dial value</p>
-          </div>
-          <ChevronRight className="h-5 w-5 text-gray-400" />
-        </button>
-
-        <button
-          onClick={() => onNavigate('household')}
-          className="w-full flex items-center gap-4 p-4 bg-white rounded-xl border border-gray-100 hover:border-primary-200 hover:bg-primary-50 transition-colors text-left"
-        >
-          <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-            <Home className="h-6 w-6 text-green-600" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold text-gray-900">Register a household</p>
-            <p className="text-sm text-gray-500">Open a new water account in one of your communities</p>
           </div>
           <ChevronRight className="h-5 w-5 text-gray-400" />
         </button>
