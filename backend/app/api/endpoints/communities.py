@@ -54,17 +54,11 @@ def create_community(
     """Water committee administrators (and the levels above) add communities."""
     data = payload.model_dump()
     committee_id = data.get("water_committee_id") or current_user.water_committee_id
-    if committee_id is None and current_user.role == UserRole.COMMUNITY_ADMIN:
+    if committee_id is None:
         raise HTTPException(status_code=400, detail="Choose the water committee this community belongs to")
-    committee = require_committee(db, current_user, committee_id) if committee_id else None
-    partner_id = committee.partner_id if committee else (data.get("partner_id") or current_user.partner_id)
-    if partner_id is None:
-        partner = db.query(Partner).order_by(Partner.created_at).first()
-        if not partner:
-            raise HTTPException(status_code=400, detail="Create a partner organisation first")
-        partner_id = partner.id
-    data["partner_id"] = partner_id
-    data["water_committee_id"] = committee.id if committee else None
+    committee = require_committee(db, current_user, committee_id)
+    data["partner_id"] = committee.partner_id
+    data["water_committee_id"] = committee.id
     community = Community(**data)
     db.add(community)
     db.commit()
@@ -90,6 +84,8 @@ def update_community(
 ):
     community = require_community(db, current_user, community_id)
     data = payload.model_dump(exclude_unset=True)
+    if "water_committee_id" in data and not data["water_committee_id"]:
+        raise HTTPException(status_code=400, detail="A community must belong to a water committee")
     if data.get("water_committee_id"):
         committee = require_committee(db, current_user, data["water_committee_id"])
         community.partner_id = committee.partner_id

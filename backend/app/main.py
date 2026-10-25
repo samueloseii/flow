@@ -43,11 +43,35 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
+def attach_partners_to_organization():
+    """Partners created before the organization level existed get a default organization."""
+    from app.db.session import SessionLocal
+    from app.models.organization import Organization
+    from app.models.partner import Partner
+
+    db = SessionLocal()
+    try:
+        orphans = db.query(Partner).filter(Partner.organization_id.is_(None)).all()
+        if not orphans:
+            return
+        org = db.query(Organization).order_by(Organization.created_at).first()
+        if not org:
+            org = Organization(name="Main organization")
+            db.add(org)
+            db.flush()
+        for partner in orphans:
+            partner.organization_id = org.id
+        db.commit()
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
     run_migrations(engine)
     bootstrap()
+    attach_partners_to_organization()
 
 
 @app.get("/health")

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.community import Community
+from app.models.organization import Organization
 from app.models.partner import Partner
 from app.models.user import User, UserRole
 from app.schemas.partner import PartnerCreate, PartnerResponse, PartnerUpdate
@@ -25,6 +26,8 @@ def _response(db: Session, partner: Partner) -> PartnerResponse:
         description=partner.description,
         created_at=partner.created_at,
         communities_count=count,
+        organization_id=partner.organization_id,
+        organization_name=partner.organization.name if partner.organization else None,
     )
 
 
@@ -48,9 +51,22 @@ def create_partner(
     if db.query(Partner).filter(Partner.name == payload.name).first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="An organization with that name already exists",
+            detail="A partner with that name already exists",
         )
-    partner = Partner(**payload.model_dump())
+    data = payload.model_dump(exclude={"new_organization_name"})
+    if data.get("organization_id"):
+        if not db.query(Organization).filter(Organization.id == data["organization_id"]).first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    elif payload.new_organization_name:
+        org = db.query(Organization).filter(Organization.name == payload.new_organization_name).first()
+        if not org:
+            org = Organization(name=payload.new_organization_name, country=payload.country)
+            db.add(org)
+            db.flush()
+        data["organization_id"] = org.id
+    else:
+        raise HTTPException(status_code=400, detail="Choose the organization this partner belongs to")
+    partner = Partner(**data)
     db.add(partner)
     db.commit()
     db.refresh(partner)
@@ -66,8 +82,11 @@ def update_partner(
 ):
     partner = db.query(Partner).filter(Partner.id == partner_id).first()
     if not partner:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "organization_id" in data and current_user.role is not UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the system administrator moves partners between organizations")
+    for field, value in data.items():
         setattr(partner, field, value)
     db.commit()
     db.refresh(partner)
@@ -82,7 +101,7 @@ def delete_partner(
 ):
     partner = db.query(Partner).filter(Partner.id == partner_id).first()
     if not partner:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner not found")
     if db.query(Community).filter(Community.partner_id == partner_id).count():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

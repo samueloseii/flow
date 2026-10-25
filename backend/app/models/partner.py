@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from app.db.types import GUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,11 @@ class Partner(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("organizations.id"), nullable=True, index=True
+    )
+
+    organization: Mapped["Organization | None"] = relationship(back_populates="partners")  # noqa: F821
 
     communities: Mapped[list["Community"]] = relationship(back_populates="partner")  # noqa: F821
     users: Mapped[list["User"]] = relationship(back_populates="partner")  # noqa: F821

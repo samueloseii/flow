@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from app.api.endpoints import (
+    organizations,
+    structure,
     analytics,
     auth,
     billing,
@@ -19,7 +21,9 @@ from app.api.endpoints import (
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(organizations.router)
 api_router.include_router(partners.router)
+api_router.include_router(structure.router)
 api_router.include_router(communities.router)
 api_router.include_router(households.router)
 api_router.include_router(meters.router)
