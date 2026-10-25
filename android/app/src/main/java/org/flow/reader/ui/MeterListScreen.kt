@@ -59,9 +59,16 @@ fun MeterListScreen(
     val filtered = remember(meters, query) {
         if (query.isBlank()) meters
         else meters.filter {
-            it.headOfHousehold.contains(query, true) || it.accountNumber.contains(query, true)
+            it.headOfHousehold.contains(query, true) ||
+                it.accountNumber.contains(query, true) ||
+                (it.communityName ?: "").contains(query, true)
         }
     }
+    val grouped = remember(filtered) {
+        filtered.sortedWith(compareBy({ it.communityName ?: "" }, { it.headOfHousehold }))
+            .groupBy { it.communityName ?: "Your communities" }
+    }
+    val showCommunityHeaders = grouped.size > 1
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -120,8 +127,20 @@ fun MeterListScreen(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(filtered, key = { it.meterId }) { meter ->
-                        MeterRow(meter) { onSelect(meter) }
+                    grouped.forEach { (community, rows) ->
+                        if (showCommunityHeaders) {
+                            item(key = "community-$community") {
+                                Text(
+                                    community,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 2.dp),
+                                )
+                            }
+                        }
+                        items(rows, key = { it.meterId }) { meter ->
+                            MeterRow(meter) { onSelect(meter) }
+                        }
                     }
                 }
             }
