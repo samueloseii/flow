@@ -95,6 +95,22 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<TeamMember | null>(null)
   const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '', water_committee_id: '', partner_id: '', household_id: '', assigned_community_ids: [] as string[] })
 
+  function scopeLabel(m: TeamMember): string {
+    if (m.role === 'super_admin') return 'Everything'
+    if (m.household_id) {
+      const h = households.find((x) => x.id === m.household_id)
+      return h ? `Household ${h.account_number} — ${h.head_of_household}` : 'One household'
+    }
+    if (m.assigned_community_ids?.length) {
+      const names = m.assigned_community_ids.map((id) => communityName(id)).filter((n) => n && n !== '—')
+      if (names.length) return names.join(', ')
+    }
+    if (m.community_id) return communityName(m.community_id)
+    if (m.water_committee_id) return committees.find((c) => c.id === m.water_committee_id)?.name ?? 'One water committee'
+    if (m.partner_id) return partners.find((p) => p.id === m.partner_id)?.name ?? 'One partner'
+    return 'Not assigned yet'
+  }
+
   function load() {
     setLoading(true)
     api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
@@ -226,7 +242,7 @@ export default function UsersPage() {
                 <th className="px-5 py-3 font-medium">Name</th>
                 <th className="px-5 py-3 font-medium">Email</th>
                 <th className="px-5 py-3 font-medium">Role</th>
-                <th className="px-5 py-3 font-medium">Community</th>
+                <th className="px-5 py-3 font-medium">Scope</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -236,7 +252,7 @@ export default function UsersPage() {
                   <td className="px-5 py-3 font-medium text-gray-900">{m.full_name}</td>
                   <td className="px-5 py-3 text-gray-600">{m.email}</td>
                   <td className="px-5 py-3 text-gray-600">{roleLabels[m.role] ?? m.role}</td>
-                  <td className="px-5 py-3 text-gray-600">{communityName(m.community_id)}</td>
+                  <td className="px-5 py-3 text-gray-600">{scopeLabel(m)}</td>
                   <td className="px-5 py-3">
                     <div className="flex items-center justify-end gap-3">
                       <button
