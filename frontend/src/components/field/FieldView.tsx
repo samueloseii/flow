@@ -6,9 +6,8 @@ import FieldDashboard from './FieldDashboard'
 import MeterReadingField from './MeterReadingField'
 import MaintenanceField from './MaintenanceField'
 import MeterReplaceField from './MeterReplaceField'
-import HouseholdAddField from './HouseholdAddField'
 
-type Page = 'home' | 'readings' | 'maintenance' | 'meter' | 'household'
+type Page = 'home' | 'readings' | 'maintenance' | 'meter'
 
 export default function FieldView() {
   const { logout, user } = useAuth()
@@ -43,9 +42,6 @@ export default function FieldView() {
         )}
         {page === 'readings' && (
           <MeterReadingField onBack={() => setPage('home')} />
-        )}
-        {page === 'household' && (
-          <HouseholdAddField onBack={() => setPage('home')} />
         )}
         {page === 'meter' && (
           <MeterReplaceField onBack={() => setPage('home')} />
