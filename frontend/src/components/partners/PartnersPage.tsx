@@ -12,12 +12,17 @@ interface Partner {
   contact_phone: string | null
   description: string | null
   communities_count: number
+  organization_id: string | null
+  organization_name: string | null
 }
 
-const emptyForm = { name: '', country: '', contact_name: '', contact_email: '', contact_phone: '', description: '' }
+interface Organization { id: string; name: string; partners_count: number }
+
+const emptyForm = { organization_id: '', new_organization_name: '', name: '', country: '', contact_name: '', contact_email: '', contact_phone: '', description: '' }
 
 export default function PartnersPage() {
   const [partners, setPartners] = useState<Partner[]>([])
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -26,7 +31,10 @@ export default function PartnersPage() {
 
   function load() {
     setLoading(true)
-    api.get('/partners/').then((r) => setPartners(r.data)).catch(() => setPartners([])).finally(() => setLoading(false))
+    Promise.all([api.get('/partners/'), api.get('/organizations/')])
+      .then(([p, o]) => { setPartners(p.data); setOrganizations(o.data) })
+      .catch(() => setPartners([]))
+      .finally(() => setLoading(false))
   }
   useEffect(load, [])
 
@@ -36,6 +44,8 @@ export default function PartnersPage() {
     setError('')
     try {
       await api.post('/partners/', {
+        organization_id: form.organization_id || null,
+        new_organization_name: form.organization_id ? null : form.new_organization_name.trim(),
         name: form.name,
         country: form.country,
         contact_name: form.contact_name || null,
@@ -63,8 +73,8 @@ export default function PartnersPage() {
     <div>
       <PageHeader
         title="Partners"
-        subtitle="The organizations that support water committees. Each partner's administrators see only their own committees."
-        actions={<button onClick={() => { setForm(emptyForm); setError(''); setShowForm(true) }} className={primaryButtonClass}><Plus className="h-4 w-4" />New partner</button>}
+        subtitle="Organization → Partner. Partners support water committees; each partner's administrators see only their own committees."
+        actions={<button onClick={() => { setForm({ ...emptyForm, organization_id: organizations[0]?.id ?? '' }); setError(''); setShowForm(true) }} className={primaryButtonClass}><Plus className="h-4 w-4" />New partner</button>}
       />
       {loading ? <Spinner /> : partners.length === 0 ? (
         <EmptyState icon={Handshake} title="No partners yet" hint="Add a partner, then its water committees." />
@@ -73,6 +83,7 @@ export default function PartnersPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
+                <th className="px-5 py-3">Organization</th>
                 <th className="px-5 py-3">Partner</th>
                 <th className="px-5 py-3">Country</th>
                 <th className="px-5 py-3">Contact</th>
@@ -83,6 +94,7 @@ export default function PartnersPage() {
             <tbody className="divide-y divide-gray-100">
               {partners.map((p) => (
                 <tr key={p.id}>
+                  <td className="px-5 py-3 text-gray-700">{p.organization_name ?? '—'}</td>
                   <td className="px-5 py-3">
                     <p className="font-medium text-gray-900">{p.name}</p>
                     {p.description && <p className="text-xs text-gray-500">{p.description}</p>}
@@ -109,7 +121,18 @@ export default function PartnersPage() {
           <form onSubmit={submit} className="space-y-4">
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Name"><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
+              <Field label="Organization" className="sm:col-span-2" hint="The body this partner belongs to">
+                <select className={inputClass} value={form.organization_id} onChange={(e) => setForm({ ...form, organization_id: e.target.value })}>
+                  {organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  <option value="">New organization…</option>
+                </select>
+              </Field>
+              {!form.organization_id && (
+                <Field label="New organization name" className="sm:col-span-2">
+                  <input className={inputClass} value={form.new_organization_name} onChange={(e) => setForm({ ...form, new_organization_name: e.target.value })} required />
+                </Field>
+              )}
+              <Field label="Partner name"><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
               <Field label="Country"><input className={inputClass} value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} required /></Field>
               <Field label="Contact name"><input className={inputClass} value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} /></Field>
               <Field label="Contact phone"><input className={inputClass} value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} /></Field>

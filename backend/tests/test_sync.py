@@ -5,11 +5,14 @@ API = "/api/v1"
 
 def _meter(client, auth) -> str:
     partner = client.post(
-        f"{API}/partners/", json={"name": "Test partner", "country": "EC"}, headers=auth
+        f"{API}/partners/", json={"name": "Test partner", "country": "EC", "new_organization_name": "Test org"}, headers=auth
+    ).json()
+    committee = client.post(
+        f"{API}/water-committees/", json={"name": "Test WC", "partner_id": partner["id"]}, headers=auth
     ).json()
     community = client.post(
         f"{API}/communities/",
-        json={"name": "Test community", "country": "EC", "partner_id": partner["id"]},
+        json={"name": "Test community", "country": "EC", "water_committee_id": committee["id"]},
         headers=auth,
     ).json()
     household = client.post(

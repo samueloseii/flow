@@ -32,11 +32,6 @@ interface Committee {
   name: string
 }
 
-interface Organization {
-  id: string
-  name: string
-}
-
 const systemTypeLabel: Record<string, string> = {
   gravity_fed: 'Gravity-fed',
   pumped: 'Pumped',
@@ -60,7 +55,6 @@ const emptyForm = {
 
 export default function CommunitiesPage() {
   const [communities, setCommunities] = useState<Community[]>([])
-  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [committees, setCommittees] = useState<Committee[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -71,11 +65,8 @@ export default function CommunitiesPage() {
   function load() {
     setLoading(true)
     api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
-    Promise.all([api.get('/communities/'), api.get('/partners/')])
-      .then(([communityRes, partnerRes]) => {
-        setCommunities(communityRes.data)
-        setOrganizations(partnerRes.data)
-      })
+    api.get('/communities/')
+      .then((r) => setCommunities(r.data))
       .catch(() => setCommunities([]))
       .finally(() => setLoading(false))
   }
@@ -83,7 +74,7 @@ export default function CommunitiesPage() {
   useEffect(load, [])
 
   function openForm() {
-    setForm({ ...emptyForm, partner_id: organizations[0]?.id ?? '', water_committee_id: committees[0]?.id ?? '' })
+    setForm({ ...emptyForm, water_committee_id: committees[0]?.id ?? '' })
     setError('')
     setShowForm(true)
   }
@@ -93,14 +84,6 @@ export default function CommunitiesPage() {
     setSaving(true)
     setError('')
     try {
-      let partnerId = form.partner_id
-      if (!partnerId && !form.water_committee_id) {
-        const created = await api.post('/partners/', {
-          name: form.new_partner_name.trim() || form.name,
-          country: form.country,
-        })
-        partnerId = created.data.id
-      }
       await api.post('/communities/', {
         name: form.name,
         country: form.country,
@@ -111,8 +94,7 @@ export default function CommunitiesPage() {
         population: form.population ? Number(form.population) : null,
         tariff_fixed: Number(form.tariff_fixed || 0),
         tariff_per_m3: Number(form.tariff_per_m3 || 0),
-        partner_id: partnerId || null,
-        water_committee_id: form.water_committee_id || null,
+        water_committee_id: form.water_committee_id,
       })
       setShowForm(false)
       load()
@@ -305,8 +287,9 @@ export default function CommunitiesPage() {
                   className={inputClass}
                   value={form.water_committee_id}
                   onChange={(e) => setForm({ ...form, water_committee_id: e.target.value })}
+                  required
                 >
-                  <option value="">No committee yet</option>
+                  <option value="">Choose a water committee</option>
                   {committees.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -314,32 +297,6 @@ export default function CommunitiesPage() {
                   ))}
                 </select>
               </Field>
-              {!form.water_committee_id && (
-              <Field label="Organization">
-                <select
-                  className={inputClass}
-                  value={form.partner_id}
-                  onChange={(e) => setForm({ ...form, partner_id: e.target.value })}
-                >
-                  {organizations.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                  <option value="">Create a new organization…</option>
-                </select>
-              </Field>
-              )}
-              {!form.partner_id && (
-                <Field label="New organization name">
-                  <input
-                    className={inputClass}
-                    value={form.new_partner_name}
-                    onChange={(e) => setForm({ ...form, new_partner_name: e.target.value })}
-                    required
-                  />
-                </Field>
-              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button

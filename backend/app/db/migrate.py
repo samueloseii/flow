@@ -26,6 +26,7 @@ STATEMENTS = (
     "ALTER TABLE households ADD COLUMN IF NOT EXISTS tariff_id UUID REFERENCES tariffs(id)",
     "ALTER TABLE meter_readings ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES invoices(id)",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS household_id UUID REFERENCES households(id)",
+    "ALTER TABLE partners ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id)",
 )
 
 
@@ -41,6 +42,7 @@ SQLITE_STATEMENTS = (
     "ALTER TABLE households ADD COLUMN tariff_id CHAR(36) REFERENCES tariffs(id)",
     "ALTER TABLE meter_readings ADD COLUMN invoice_id CHAR(36) REFERENCES invoices(id)",
     "ALTER TABLE users ADD COLUMN household_id CHAR(36) REFERENCES households(id)",
+    "ALTER TABLE partners ADD COLUMN organization_id CHAR(36) REFERENCES organizations(id)",
 )
 
 

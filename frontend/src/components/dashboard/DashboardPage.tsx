@@ -97,7 +97,7 @@ export default function DashboardPage() {
             value={formatMoney(currency, data.total_arrears)}
             tone={data.total_arrears > 0 ? 'danger' : 'default'}
           />
-          <StatCard label="Organizations" value={data.total_partners} />
+          <StatCard label="Partners" value={data.total_partners} />
           <StatCard label="Accounts" value={data.total_users} />
         </div>
       )}
