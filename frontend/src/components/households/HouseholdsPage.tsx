@@ -146,7 +146,7 @@ export default function HouseholdsPage() {
     <div>
       <PageHeader
         title="Households"
-        subtitle="Water accounts. Only administrators open or change an account."
+        subtitle="Water accounts, one per household. Administrators and operators can register them; readings follow the active meter."
         actions={
           <button onClick={openForm} className={primaryButtonClass}>
             <Plus className="h-4 w-4" />

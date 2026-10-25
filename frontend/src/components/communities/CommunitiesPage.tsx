@@ -62,9 +62,16 @@ export default function CommunitiesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const [householdCounts, setHouseholdCounts] = useState<Record<string, number>>({})
+
   function load() {
     setLoading(true)
     api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
+    api.get('/households/').then((r) => {
+      const counts: Record<string, number> = {}
+      for (const h of r.data) counts[h.community_id] = (counts[h.community_id] ?? 0) + 1
+      setHouseholdCounts(counts)
+    }).catch(() => setHouseholdCounts({}))
     api.get('/communities/')
       .then((r) => setCommunities(r.data))
       .catch(() => setCommunities([]))
@@ -119,7 +126,7 @@ export default function CommunitiesPage() {
     <div>
       <PageHeader
         title="Communities"
-        subtitle="Water systems, their tariffs and the organization responsible"
+        subtitle="Each community is a water system run by a water committee. Tariffs are set under Tariffs."
         actions={
           <button onClick={openForm} className={primaryButtonClass}>
             <Plus className="h-4 w-4" />
@@ -165,18 +172,12 @@ export default function CommunitiesPage() {
               </div>
               <dl className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <dt className="text-gray-500 text-xs">Connections</dt>
-                  <dd className="font-medium text-gray-900">{c.total_connections}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-500">Water committee</dt>
-                  <dd className="font-medium text-gray-900">{c.water_committee_name ?? '—'}</dd>
+                  <dt className="text-gray-500 text-xs">Households</dt>
+                  <dd className="font-medium text-gray-900">{householdCounts[c.id] ?? 0}</dd>
                 </div>
                 <div>
-                  <dt className="text-gray-500 text-xs">Tariff</dt>
-                  <dd className="font-medium text-gray-900">
-                    {c.currency} {c.tariff_fixed} + {c.tariff_per_m3}/m³
-                  </dd>
+                  <dt className="text-gray-500 text-xs">Water committee</dt>
+                  <dd className="font-medium text-gray-900">{c.water_committee_name ?? '—'}</dd>
                 </div>
               </dl>
             </Card>
@@ -187,7 +188,7 @@ export default function CommunitiesPage() {
       {showForm && (
         <Modal
           title="New community"
-          description="Tariffs are used when bills are generated."
+          description="A community sits under a water committee. Tariffs are set afterwards under Tariffs and assigned per household."
           onClose={() => setShowForm(false)}
         >
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -257,28 +258,6 @@ export default function CommunitiesPage() {
                   value={form.currency}
                   onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
                   maxLength={5}
-                  required
-                />
-              </Field>
-              <Field label="Fixed charge per bill">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className={inputClass}
-                  value={form.tariff_fixed}
-                  onChange={(e) => setForm({ ...form, tariff_fixed: e.target.value })}
-                  required
-                />
-              </Field>
-              <Field label="Charge per m³">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className={inputClass}
-                  value={form.tariff_per_m3}
-                  onChange={(e) => setForm({ ...form, tariff_per_m3: e.target.value })}
                   required
                 />
               </Field>
