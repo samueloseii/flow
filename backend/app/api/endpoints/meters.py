@@ -68,7 +68,7 @@ def reading_context(
                 contact_name=connection.contact_name,
                 address=connection.address,
                 community_id=connection.community_id,
-                community_name=community.name,
+                community_name=community.name if community else None,
                 meter_id=meter.id,
                 serial_number=meter.serial_number,
                 last_reading_value=meter.last_reading_value,

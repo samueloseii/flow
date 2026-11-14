@@ -66,7 +66,7 @@ fun MeterListScreen(
     }
     val grouped = remember(filtered) {
         filtered.sortedWith(compareBy({ it.communityName ?: "" }, { it.contactName }))
-            .groupBy { it.communityName ?: "Your communities" }
+            .groupBy { it.communityName ?: "Not grouped" }
     }
     val showCommunityHeaders = grouped.size > 1
 

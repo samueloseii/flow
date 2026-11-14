@@ -79,7 +79,7 @@ class Converters {
     fun fromStatus(status: ReadingStatus): String = status.name
 }
 
-@Database(entities = [MeterEntity::class, ReadingEntity::class], version = 2, exportSchema = false)
+@Database(entities = [MeterEntity::class, ReadingEntity::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class FlowDatabase : RoomDatabase() {
     abstract fun meters(): MeterDao

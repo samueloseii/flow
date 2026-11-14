@@ -1,3 +1,4 @@
+import math
 import uuid
 from datetime import datetime, timezone
 
@@ -47,12 +48,16 @@ class Tariff(Base):
     connections: Mapped[list["Connection"]] = relationship(back_populates="tariff")  # noqa: F821
 
     def charge_for(self, consumption_m3: float) -> tuple[float, float, list[dict]]:
-        """Return (fixed, variable, blocks) for a consumption figure."""
+        """Return (fixed, variable, blocks) for a consumption figure.
+
+        Committees bill whole cubic metres: any fraction of an extra m³ is charged
+        as a full m³ (12.1 m³ and 13.0 m³ cost the same), so the volume is rounded up.
+        """
         thresholds = [float(t) for t in (self.thresholds or [])]
         rates = [float(r) for r in (self.rates or [])]
         while len(rates) < len(thresholds) + 1:
             rates.append(rates[-1] if rates else 0.0)
-        remaining = max(0.0, consumption_m3)
+        remaining = float(math.ceil(max(0.0, consumption_m3) - 1e-9))
         lower = 0.0
         variable = 0.0
         blocks: list[dict] = []

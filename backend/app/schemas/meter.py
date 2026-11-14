@@ -71,7 +71,7 @@ class ReadingContext(BaseModel):
     account_number: str
     contact_name: str
     address: str | None
-    community_id: uuid.UUID
+    community_id: uuid.UUID | None = None
     meter_id: uuid.UUID
     serial_number: str
     last_reading_value: float

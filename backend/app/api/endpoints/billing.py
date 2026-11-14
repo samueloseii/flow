@@ -1,3 +1,4 @@
+import math
 import uuid
 from datetime import datetime
 
@@ -144,7 +145,8 @@ def generate_invoices(
             already = (
                 db.query(Invoice)
                 .filter(Invoice.connection_id == connection.id)
-                .filter(Invoice.billing_period_start == payload.billing_period_start)
+                .filter(Invoice.billing_period_end >= payload.billing_period_start)
+                .filter(Invoice.billing_period_start <= payload.billing_period_end)
                 .first()
             )
             if already:
@@ -163,18 +165,25 @@ def generate_invoices(
                 else []
             )
             consumption = round(sum(r.consumption_m3 for r in readings), 3)
-            if not readings or consumption <= 0:
-                skipped_no_reading += 1
-                continue
-
             tariff = connection.tariff or default_tariff
-            if tariff:
-                fixed, variable, _blocks = tariff.charge_for(consumption)
-                currency = tariff.currency
-                note = f"Tariff: {tariff.name}"
-            else:
+            if not tariff:
                 skipped_no_tariff += 1
                 continue
+            if not readings:
+                # A fixed base rate is owed every month, read or not; say so on the bill.
+                if tariff.base_rate <= 0:
+                    skipped_no_reading += 1
+                    continue
+                consumption = 0.0
+                fixed, variable = round(tariff.base_rate, 2), 0.0
+                note = f"Tariff: {tariff.name}. No meter reading in this period — base rate only"
+            else:
+                fixed, variable, _blocks = tariff.charge_for(consumption)
+                billed_m3 = math.ceil(max(0.0, consumption) - 1e-9)
+                note = f"Tariff: {tariff.name}"
+                if billed_m3 != consumption:
+                    note += f". {consumption} m³ read, billed as {billed_m3} m³ (whole m³)"
+            currency = tariff.currency
             total = round(fixed + variable, 2)
             invoice = Invoice(
                 invoice_number=_generate_invoice_number(db),

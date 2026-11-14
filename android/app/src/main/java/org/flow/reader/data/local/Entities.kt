@@ -11,7 +11,7 @@ data class MeterEntity(
     val accountNumber: String,
     val contactName: String,
     val address: String?,
-    val communityId: String,
+    val communityId: String? = null,
     val serialNumber: String,
     val lastReadingValue: Double,
     val lastReadingDate: String?,

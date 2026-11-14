@@ -228,6 +228,12 @@ def test_block_tariff_and_billing_traceability(client, auth):
     )
     assert r.json()["total"] == 6.75
     assert r.json()["fixed_charge"] == 3.5
+    # fractions of a m³ are billed as a whole m³: 12.1 and 13 cost the same
+    body = {"name": "x", "water_committee_id": committee["id"], "base_rate": 3.5,
+            "thresholds": [10, 15, 20], "rates": [0, 0.35, 0.5, 0.8]}
+    a = client.post(f"{API}/tariffs/preview", params={"consumption_m3": 12.1}, json=body, headers=auth).json()
+    b = client.post(f"{API}/tariffs/preview", params={"consumption_m3": 13}, json=body, headers=auth).json()
+    assert a["variable_charge"] == b["variable_charge"] == 1.05
 
     std_hh = client.post(
         f"{API}/connections/",

@@ -49,6 +49,37 @@ def flag_reading(reading_value: float, previous_value: float, average: float) ->
     return None
 
 
+USUAL_INTERVAL_DAYS = 30
+INTERVAL_TOLERANCE = 0.2
+
+
+def interval_flag(previous_date: datetime | None, reading_date: datetime) -> str | None:
+    """Flag a reading taken much earlier or later than the usual monthly round.
+
+    The bill is not changed because of this; the treasurer sees the note and decides.
+    """
+    if previous_date is None:
+        return None
+    prev = previous_date if previous_date.tzinfo else previous_date.replace(tzinfo=timezone.utc)
+    cur = reading_date if reading_date.tzinfo else reading_date.replace(tzinfo=timezone.utc)
+    days = (cur - prev).days
+    low = USUAL_INTERVAL_DAYS * (1 - INTERVAL_TOLERANCE)
+    high = USUAL_INTERVAL_DAYS * (1 + INTERVAL_TOLERANCE)
+    if days < 0:
+        return f"Reading dated {abs(days)} days before the previous one — check the date."
+    if days < low or days > high:
+        return (
+            f"{days} days since the previous reading (usual round is about {USUAL_INTERVAL_DAYS}) "
+            "— consumption covers a longer or shorter period than normal."
+        )
+    return None
+
+
+def _join_flags(*flags: str | None) -> str | None:
+    kept = [f for f in flags if f]
+    return " ".join(kept) if kept else None
+
+
 def record_reading(
     db: Session,
     meter: Meter,
@@ -75,7 +106,10 @@ def record_reading(
         notes=notes,
         is_estimated=is_estimated,
         recorded_by=recorded_by,
-        flag_reason=flag_reading(reading_value, previous_value, average),
+        flag_reason=_join_flags(
+            flag_reading(reading_value, previous_value, average),
+            interval_flag(meter.last_reading_date, reading_date),
+        ),
         client_id=client_id,
         meter_id=meter.id,
     )
