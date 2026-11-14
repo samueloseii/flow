@@ -20,9 +20,9 @@ import { Field, Modal, inputClass, primaryButtonClass, secondaryButtonClass } fr
 
 type NavItem = { to: string; icon: typeof LayoutDashboard; label: string; roles?: string[] }
 
-const ALL = ['super_admin', 'partner_admin', 'community_admin', 'treasurer', 'reader']
-const MONEY = ['super_admin', 'partner_admin', 'community_admin', 'treasurer']
-const MANAGE = ['super_admin', 'partner_admin', 'community_admin']
+const ALL = ['super_admin', 'admin', 'editor', 'viewer']
+const MONEY = ['super_admin', 'admin', 'editor']
+const MANAGE = ['super_admin', 'admin']
 
 // One "Structure" entry walks the tree Partner → Water committee → Community → Connection → Meter,
 // starting at the account's own level, so communities and connections are never shown as peers.
@@ -46,7 +46,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: 'Oversight',
     items: [
       { to: '/analytics', icon: BarChart3, label: 'Analytics', roles: MONEY },
-      { to: '/team', icon: UserCog, label: 'Team', roles: [...MANAGE, 'treasurer'] },
+      { to: '/team', icon: UserCog, label: 'Team', roles: [...MANAGE, 'editor'] },
     ],
   },
 ]
@@ -66,11 +66,10 @@ function visibleGroups(user: { role: string; partner_id?: string | null; water_c
 
 const roleLabels: Record<string, string> = {
   super_admin: 'System administrator',
-  partner_admin: 'Partner administrator',
-  community_admin: 'Water committee administrator',
-  treasurer: 'Treasurer',
+  admin: 'Administrator',
+  editor: 'Editor',
   operator: 'Operator',
-  reader: 'Viewer (read-only)',
+  viewer: 'Viewer (read-only)',
 }
 
 export default function Sidebar() {

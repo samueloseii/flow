@@ -7,9 +7,6 @@ interface CommunityInfo {
   id: string
   name: string
   country: string
-  currency: string
-  tariff_fixed: number
-  tariff_per_m3: number
 }
 
 interface ConnectionInfo {

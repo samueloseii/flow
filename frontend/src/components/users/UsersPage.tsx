@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { KeyRound, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import api from '../../services/api'
+import { useAuth } from '../../contexts/AuthContext'
 import {
   Card,
   EmptyState,
@@ -20,19 +21,18 @@ interface TeamMember {
   role: string
   phone: string | null
   is_active: boolean
-  community_id: string | null
+  parent_level: string | null
+  parent_id: string | null
+  parent_name: string | null
+  access_all_children: boolean
+  community_ids: string[]
+  connection_ids: string[]
   water_committee_id: string | null
-  partner_id?: string | null
-  connection_id?: string | null
-  assigned_community_ids: string[]
+  partner_id: string | null
+  organization_id: string | null
 }
 
-interface Committee {
-  id: string
-  name: string
-}
-
-interface Partner {
+interface Named {
   id: string
   name: string
 }
@@ -41,91 +41,129 @@ interface ConnectionOption {
   id: string
   account_number: string
   contact_name: string
-  community_id: string
+  water_committee_id: string
+  community_id: string | null
 }
 
 interface Community {
   id: string
   name: string
-  water_committee_id: string | null
+  water_committee_id: string
 }
 
-const roleOptions = [
-  { value: 'operator', label: 'Operator — reads meters in assigned communities' },
-  { value: 'treasurer', label: 'Treasurer — billing, payments and expenses for the committee' },
-  { value: 'community_admin', label: 'Water committee administrator — runs the committee' },
-  { value: 'partner_admin', label: 'Partner administrator — all committees the partner supports' },
+export const roleOptions = [
+  { value: 'operator', label: 'Operator — reads meters and replaces them; water committee level only' },
+  { value: 'editor', label: 'Editor (treasurer) — edits everything at their level and below, cannot add or delete' },
+  { value: 'admin', label: 'Administrator — adds, edits and deletes at their level and below' },
+  { value: 'viewer', label: 'Viewer — read-only; the only role for a single connection' },
   { value: 'super_admin', label: 'System administrator — everything' },
-  { value: 'reader', label: 'Viewer — read-only at a partner, committee, community or single connection' },
 ]
 
-const roleLabels: Record<string, string> = {
-  super_admin: 'Super administrator',
-  partner_admin: 'Organization administrator',
-  community_admin: 'Water committee admin',
-  treasurer: 'Treasurer',
+export const roleLabels: Record<string, string> = {
+  super_admin: 'System administrator',
+  admin: 'Administrator',
+  editor: 'Editor',
   operator: 'Operator',
-  reader: 'Viewer',
+  viewer: 'Viewer',
 }
 
-const emptyForm = {
-  full_name: '',
-  email: '',
-  password: '',
-  phone: '',
+const levelLabels: Record<string, string> = {
+  organization: 'Organization',
+  partner: 'Partner',
+  water_committee: 'Water committee',
+  connection: 'Connection',
+}
+
+function levelsForRole(role: string): string[] {
+  if (role === 'super_admin') return []
+  if (role === 'operator') return ['water_committee']
+  if (role === 'viewer') return ['organization', 'partner', 'water_committee', 'connection']
+  return ['organization', 'partner', 'water_committee']
+}
+
+interface ScopeForm {
+  role: string
+  parent_level: string
+  parent_id: string
+  restrict: boolean
+  community_ids: string[]
+  connection_ids: string[]
+}
+
+const emptyScope: ScopeForm = {
   role: 'operator',
-  community_id: '',
-  water_committee_id: '',
-  partner_id: '',
-  connection_id: '',
-  assigned_community_ids: [] as string[],
+  parent_level: 'water_committee',
+  parent_id: '',
+  restrict: false,
+  community_ids: [],
+  connection_ids: [],
 }
 
 export default function UsersPage() {
+  const { user: me } = useAuth()
   const [members, setMembers] = useState<TeamMember[]>([])
+  const [organizations, setOrganizations] = useState<Named[]>([])
+  const [partners, setPartners] = useState<Named[]>([])
+  const [committees, setCommittees] = useState<Named[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
-  const [committees, setCommittees] = useState<Committee[]>([])
-  const [partners, setPartners] = useState<Partner[]>([])
   const [connections, setConnections] = useState<ConnectionOption[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState({ full_name: '', email: '', password: '', phone: '', ...emptyScope })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<TeamMember | null>(null)
-  const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '', water_committee_id: '', partner_id: '', connection_id: '', assigned_community_ids: [] as string[] })
+  const [editForm, setEditForm] = useState({ full_name: '', phone: '', ...emptyScope })
 
-  function scopeLabel(m: TeamMember): string {
-    if (m.role === 'super_admin') return 'Everything'
-    if (m.connection_id) {
-      const h = connections.find((x) => x.id === m.connection_id)
-      return h ? `Connection ${h.account_number} — ${h.contact_name}` : 'One connection'
-    }
-    if (m.assigned_community_ids?.length) {
-      const names = m.assigned_community_ids.map((id) => communityName(id)).filter((n) => n && n !== '—')
-      if (names.length) return names.join(', ')
-    }
-    if (m.community_id) return communityName(m.community_id)
-    if (m.water_committee_id) return committees.find((c) => c.id === m.water_committee_id)?.name ?? 'One water committee'
-    if (m.partner_id) return partners.find((p) => p.id === m.partner_id)?.name ?? 'One partner'
-    return 'Not assigned yet'
-  }
+  const canAdd = !!me && (me.role === 'super_admin' || me.role === 'admin')
 
   function load() {
     setLoading(true)
-    api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
+    api.get('/organizations/').then((r) => setOrganizations(r.data)).catch(() => setOrganizations([]))
     api.get('/partners/').then((r) => setPartners(r.data)).catch(() => setPartners([]))
+    api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
+    api.get('/communities/').then((r) => setCommunities(r.data)).catch(() => setCommunities([]))
     api.get('/connections/').then((r) => setConnections(r.data)).catch(() => setConnections([]))
-    Promise.all([api.get('/auth/users'), api.get('/communities/')])
-      .then(([usersRes, communitiesRes]) => {
-        setMembers(usersRes.data)
-        setCommunities(communitiesRes.data)
-      })
+    api
+      .get('/auth/users')
+      .then((r) => setMembers(r.data))
       .catch(() => setMembers([]))
       .finally(() => setLoading(false))
   }
 
   useEffect(load, [])
+
+  function parentOptions(level: string): { id: string; label: string }[] {
+    if (level === 'organization') return organizations.map((o) => ({ id: o.id, label: o.name }))
+    if (level === 'partner') return partners.map((p) => ({ id: p.id, label: p.name }))
+    if (level === 'water_committee') return committees.map((c) => ({ id: c.id, label: c.name }))
+    if (level === 'connection') return connections.map((c) => ({ id: c.id, label: `${c.account_number} — ${c.contact_name}` }))
+    return []
+  }
+
+  function scopePayload(s: ScopeForm) {
+    const restricted = s.role !== 'super_admin' && s.parent_level === 'water_committee' && s.restrict
+    return {
+      role: s.role,
+      parent_level: s.role === 'super_admin' ? null : s.parent_level || null,
+      parent_id: s.role === 'super_admin' ? null : s.parent_id || null,
+      community_ids: restricted ? s.community_ids : [],
+      connection_ids: restricted ? s.connection_ids : [],
+    }
+  }
+
+  function scopeLabel(m: TeamMember): string {
+    if (m.role === 'super_admin') return 'Everything'
+    if (!m.parent_level) return 'Not assigned yet'
+    const base = `${levelLabels[m.parent_level] ?? m.parent_level}: ${m.parent_name ?? '—'}`
+    if (m.access_all_children) return base
+    const parts: string[] = []
+    if (m.community_ids?.length) {
+      parts.push(m.community_ids.map((id) => communities.find((c) => c.id === id)?.name ?? '?').join(', '))
+    }
+    if (m.connection_ids?.length) parts.push(`${m.connection_ids.length} connection${m.connection_ids.length === 1 ? '' : 's'}`)
+    return parts.length ? `${base} — only ${parts.join('; ')}` : base
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -137,15 +175,10 @@ export default function UsersPage() {
         email: form.email,
         password: form.password,
         phone: form.phone || null,
-        role: form.role,
-        community_id: form.community_id || null,
-        water_committee_id: form.water_committee_id || null,
-        partner_id: form.partner_id || null,
-        connection_id: form.role === 'reader' ? form.connection_id || null : null,
-        assigned_community_ids: form.role === 'operator' || form.role === 'reader' ? form.assigned_community_ids : [],
+        ...scopePayload(form),
       })
       setShowForm(false)
-      setForm(emptyForm)
+      setForm({ full_name: '', email: '', password: '', phone: '', ...emptyScope })
       load()
     } catch (err: any) {
       setError(err?.response?.data?.detail ?? 'Could not create the account.')
@@ -163,15 +196,7 @@ export default function UsersPage() {
       await api.patch(`/auth/users/${editing.id}`, {
         full_name: editForm.full_name,
         phone: editForm.phone || null,
-        role: editForm.role,
-        community_id: editForm.community_id || null,
-        clear_community: !editForm.community_id,
-        water_committee_id: editForm.water_committee_id || null,
-        clear_water_committee: !editForm.water_committee_id,
-        partner_id: editForm.partner_id || null,
-        connection_id: editForm.role === 'reader' ? editForm.connection_id || null : null,
-        clear_connection: editForm.role !== 'reader' || !editForm.connection_id,
-        assigned_community_ids: editForm.assigned_community_ids,
+        ...scopePayload(editForm),
       })
       setEditing(null)
       load()
@@ -181,9 +206,6 @@ export default function UsersPage() {
       setSaving(false)
     }
   }
-
-  const communityName = (id: string | null) =>
-    communities.find((c) => c.id === id)?.name ?? '—'
 
   const active = members.filter((m) => m.is_active)
 
@@ -198,8 +220,8 @@ export default function UsersPage() {
     }
   }
 
-  async function remove(member: TeamMember, question: string) {
-    if (!window.confirm(question)) return
+  async function remove(member: TeamMember) {
+    if (!window.confirm(`Remove ${member.full_name}'s account?`)) return
     try {
       await api.delete(`/auth/users/${member.id}`)
       load()
@@ -208,23 +230,143 @@ export default function UsersPage() {
     }
   }
 
+  function ScopeFields<T extends ScopeForm>({ value, onChange }: { value: T; onChange: (v: T) => void }) {
+    const levels = levelsForRole(value.role)
+    const options = parentOptions(value.parent_level)
+    const committeeCommunities = communities.filter((c) => c.water_committee_id === value.parent_id)
+    const committeeConnections = connections.filter((c) => c.water_committee_id === value.parent_id)
+    return (
+      <>
+        <Field label="Role" className="sm:col-span-2">
+          <select
+            className={inputClass}
+            value={value.role}
+            onChange={(e) => {
+              const role = e.target.value
+              const allowed = levelsForRole(role)
+              const parent_level = allowed.includes(value.parent_level) ? value.parent_level : allowed[allowed.length - 1] ?? ''
+              onChange({ ...value, role, parent_level, parent_id: parent_level === value.parent_level ? value.parent_id : '' })
+            }}
+          >
+            {roleOptions
+              .filter((r) => me?.role === 'super_admin' || r.value !== 'super_admin')
+              .map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+          </select>
+        </Field>
+        {levels.length > 0 && (
+          <>
+            <Field label="Works at the level of">
+              <select
+                className={inputClass}
+                value={value.parent_level}
+                onChange={(e) => onChange({ ...value, parent_level: e.target.value, parent_id: '', restrict: false, community_ids: [], connection_ids: [] })}
+              >
+                {levels.map((l) => (
+                  <option key={l} value={l}>
+                    {levelLabels[l]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={levelLabels[value.parent_level] ?? 'Entity'}>
+              <select
+                className={inputClass}
+                value={value.parent_id}
+                onChange={(e) => onChange({ ...value, parent_id: e.target.value, community_ids: [], connection_ids: [] })}
+                required
+              >
+                <option value="">Choose…</option>
+                {options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </>
+        )}
+        {value.parent_level === 'water_committee' && value.parent_id && (
+          <Field label="Access within the committee" className="sm:col-span-2">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="radio"
+                checked={!value.restrict}
+                onChange={() => onChange({ ...value, restrict: false, community_ids: [], connection_ids: [] })}
+              />
+              Every connection in the committee
+            </label>
+            <label className="mt-1 flex items-center gap-2 text-sm text-gray-700">
+              <input type="radio" checked={value.restrict} onChange={() => onChange({ ...value, restrict: true })} />
+              Only certain communities / circuits or connections
+            </label>
+            {value.restrict && (
+              <div className="mt-2 space-y-2">
+                {committeeCommunities.length > 0 && (
+                  <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                    {committeeCommunities.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={value.community_ids.includes(c.id)}
+                          onChange={(e) =>
+                            onChange({
+                              ...value,
+                              community_ids: e.target.checked
+                                ? [...value.community_ids, c.id]
+                                : value.community_ids.filter((id) => id !== c.id),
+                            })
+                          }
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <select
+                  multiple
+                  className={`${inputClass} h-32`}
+                  value={value.connection_ids}
+                  onChange={(e) => onChange({ ...value, connection_ids: Array.from(e.target.selectedOptions).map((o) => o.value) })}
+                >
+                  {committeeConnections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.account_number} — {c.contact_name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">Tick communities and/or select connections (hold Ctrl/Cmd for several).</p>
+              </div>
+            )}
+          </Field>
+        )}
+      </>
+    )
+  }
+
   return (
     <div>
       <PageHeader
         title="Team"
         subtitle="Who can sign in, and what they are allowed to do"
         actions={
-          <button
-            onClick={() => {
-              setForm({ ...emptyForm, community_id: communities[0]?.id ?? '' })
-              setError('')
-              setShowForm(true)
-            }}
-            className={primaryButtonClass}
-          >
-            <Plus className="h-4 w-4" />
-            Add person
-          </button>
+          canAdd ? (
+            <button
+              onClick={() => {
+                const level = me?.parent_level && me.parent_level !== 'connection' ? me.parent_level : 'water_committee'
+                setForm({ full_name: '', email: '', password: '', phone: '', ...emptyScope, parent_level: level, parent_id: me?.parent_id ?? '' })
+                setError('')
+                setShowForm(true)
+              }}
+              className={primaryButtonClass}
+            >
+              <Plus className="h-4 w-4" />
+              Add person
+            </button>
+          ) : null
         }
       />
 
@@ -255,26 +397,28 @@ export default function UsersPage() {
                   <td className="px-5 py-3 text-gray-600">{scopeLabel(m)}</td>
                   <td className="px-5 py-3">
                     <div className="flex items-center justify-end gap-3">
-                      <button
-                        className="text-gray-400 hover:text-primary-600"
-                        aria-label={`Edit ${m.full_name}`}
-                        onClick={() => {
-                          setEditForm({
-                            full_name: m.full_name,
-                            phone: m.phone ?? '',
-                            role: m.role,
-                            community_id: m.community_id ?? '',
-                            water_committee_id: m.water_committee_id ?? '',
-                            partner_id: m.partner_id ?? '',
-                            connection_id: m.connection_id ?? '',
-                            assigned_community_ids: m.assigned_community_ids ?? [],
-                          })
-                          setError('')
-                          setEditing(m)
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                      {canAdd && (
+                        <button
+                          className="text-gray-400 hover:text-primary-600"
+                          aria-label={`Edit ${m.full_name}`}
+                          onClick={() => {
+                            setEditForm({
+                              full_name: m.full_name,
+                              phone: m.phone ?? '',
+                              role: m.role,
+                              parent_level: m.parent_level ?? '',
+                              parent_id: m.parent_id ?? '',
+                              restrict: !m.access_all_children,
+                              community_ids: m.community_ids ?? [],
+                              connection_ids: m.connection_ids ?? [],
+                            })
+                            setError('')
+                            setEditing(m)
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         className="text-gray-400 hover:text-primary-600"
                         aria-label={`Change ${m.full_name}'s password`}
@@ -282,13 +426,15 @@ export default function UsersPage() {
                       >
                         <KeyRound className="h-4 w-4" />
                       </button>
-                      <button
-                        className="text-gray-400 hover:text-red-600"
-                        aria-label={`Remove ${m.full_name}`}
-                        onClick={() => remove(m, `Remove ${m.full_name}'s account?`)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {canAdd && (
+                        <button
+                          className="text-gray-400 hover:text-red-600"
+                          aria-label={`Remove ${m.full_name}`}
+                          onClick={() => remove(m)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -301,128 +447,26 @@ export default function UsersPage() {
       {editing && (
         <Modal
           title={`Edit ${editing.full_name}`}
-          description="Change what this person is allowed to do, or which community they work in."
+          description="Change what this person is allowed to do, or where they work."
           onClose={() => setEditing(null)}
         >
           <form onSubmit={handleEditSubmit} className="space-y-4">
-            {error && (
-              <p className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">
-                {error}
-              </p>
-            )}
+            {error && <p className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">{error}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Full name">
-                <input
-                  className={inputClass}
-                  value={editForm.full_name}
-                  onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
-                  required
-                />
+                <input className={inputClass} value={editForm.full_name} onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })} required />
               </Field>
               <Field label="Phone">
-                <input
-                  className={inputClass}
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                />
+                <input className={inputClass} value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
               </Field>
-              <Field label="Role" className="sm:col-span-2">
-                <select
-                  className={inputClass}
-                  value={editForm.role}
-                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                >
-                  {roleOptions.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Water committee" className="sm:col-span-2">
-                <select
-                  className={inputClass}
-                  value={editForm.water_committee_id}
-                  onChange={(e) => setEditForm({ ...editForm, water_committee_id: e.target.value, community_id: '', assigned_community_ids: [] })}
-                >
-                  <option value="">{committees.length ? 'All committees' : 'None'}</option>
-                  {committees.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {editForm.role === 'reader' && (
-                <Field label="Single connection (optional)" className="sm:col-span-2" hint="For a community member who should only see their own connection's readings and bills">
-                  <select
-                    className={inputClass}
-                    value={editForm.connection_id}
-                    onChange={(e) => setEditForm({ ...editForm, connection_id: e.target.value })}
-                  >
-                    <option value="">Not limited to one connection</option>
-                    {connections.filter((h) => editForm.assigned_community_ids.length === 0 || editForm.assigned_community_ids.includes(h.community_id)).map((h) => (
-                      <option key={h.id} value={h.id}>{h.account_number} — {h.contact_name}</option>
-                    ))}
-                  </select>
-                </Field>
-              )}
-              {editForm.role === 'reader' && partners.length > 0 && (
-                <Field label="Partner (optional)" className="sm:col-span-2" hint="A partner viewer sees every committee the partner supports">
-                  <select
-                    className={inputClass}
-                    value={editForm.partner_id}
-                    onChange={(e) => setEditForm({ ...editForm, partner_id: e.target.value })}
-                  >
-                    <option value="">None</option>
-                    {partners.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
-                  </select>
-                </Field>
-              )}
-              {(editForm.role === 'operator' || editForm.role === 'reader') ? (
-                <Field label="Communities to read" className="sm:col-span-2" hint="Tick every community this person covers">
-                  <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 p-2">
-                    {communities.filter((c) => !editForm.water_committee_id || c.water_committee_id === editForm.water_committee_id).map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={editForm.assigned_community_ids.includes(c.id)}
-                          onChange={(e) => {
-                            const ids = e.target.checked
-                              ? [...editForm.assigned_community_ids, c.id]
-                              : editForm.assigned_community_ids.filter((id) => id !== c.id)
-                            setEditForm({ ...editForm, assigned_community_ids: ids, community_id: ids[0] ?? '' })
-                          }}
-                        />
-                        {c.name}
-                      </label>
-                    ))}
-                    {communities.length === 0 && <span className="text-xs text-gray-500">No communities yet</span>}
-                  </div>
-                </Field>
-              ) : (
-              <Field label="Community" className="sm:col-span-2">
-                <select
-                  className={inputClass}
-                  value={editForm.community_id}
-                  onChange={(e) => setEditForm({ ...editForm, community_id: e.target.value })}
-                >
-                  <option value="">All communities</option>
-                  {communities.filter((c) => !editForm.water_committee_id || c.water_committee_id === editForm.water_committee_id).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              )}
+              <ScopeFields value={editForm} onChange={setEditForm} />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className={secondaryButtonClass} onClick={() => setEditing(null)}>
+              <button type="button" onClick={() => setEditing(null)} className={secondaryButtonClass}>
                 Cancel
               </button>
-              <button type="submit" className={primaryButtonClass} disabled={saving}>
-                {saving ? 'Saving…' : 'Save changes'}
+              <button type="submit" disabled={saving} className={primaryButtonClass}>
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </form>
@@ -431,147 +475,32 @@ export default function UsersPage() {
 
       {showForm && (
         <Modal
-          title="Add person"
-          description="They sign in with this email and password."
+          title="Add a person"
+          description="Accounts are created at your level or below. Tell them their password in person."
           onClose={() => setShowForm(false)}
         >
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <p className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">
-                {error}
-              </p>
-            )}
+            {error && <p className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">{error}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Full name">
-                <input
-                  className={inputClass}
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  required
-                />
-              </Field>
-              <Field label="Email">
-                <input
-                  type="email"
-                  className={inputClass}
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                />
+                <input className={inputClass} value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required />
               </Field>
               <Field label="Phone">
-                <input
-                  className={inputClass}
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                />
+                <input className={inputClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
               </Field>
-              <Field label="Temporary password" hint="At least 8 characters">
-                <input
-                  type="text"
-                  minLength={8}
-                  className={inputClass}
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  required
-                />
+              <Field label="Email">
+                <input type="email" className={inputClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
               </Field>
-              <Field label="Role" className="sm:col-span-2">
-                <select
-                  className={inputClass}
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
-                >
-                  {roleOptions.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
+              <Field label="Password" hint="At least 8 characters">
+                <input type="password" className={inputClass} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
               </Field>
-              <Field label="Water committee" className="sm:col-span-2">
-                <select
-                  className={inputClass}
-                  value={form.water_committee_id}
-                  onChange={(e) => setForm({ ...form, water_committee_id: e.target.value, community_id: '', assigned_community_ids: [] })}
-                >
-                  <option value="">{committees.length ? 'All committees' : 'None'}</option>
-                  {committees.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {form.role === 'reader' && (
-                <Field label="Single connection (optional)" className="sm:col-span-2" hint="For a community member who should only see their own connection's readings and bills">
-                  <select
-                    className={inputClass}
-                    value={form.connection_id}
-                    onChange={(e) => setForm({ ...form, connection_id: e.target.value })}
-                  >
-                    <option value="">Not limited to one connection</option>
-                    {connections.filter((h) => form.assigned_community_ids.length === 0 || form.assigned_community_ids.includes(h.community_id)).map((h) => (
-                      <option key={h.id} value={h.id}>{h.account_number} — {h.contact_name}</option>
-                    ))}
-                  </select>
-                </Field>
-              )}
-              {form.role === 'reader' && partners.length > 0 && (
-                <Field label="Partner (optional)" className="sm:col-span-2" hint="A partner viewer sees every committee the partner supports">
-                  <select
-                    className={inputClass}
-                    value={form.partner_id}
-                    onChange={(e) => setForm({ ...form, partner_id: e.target.value })}
-                  >
-                    <option value="">None</option>
-                    {partners.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
-                  </select>
-                </Field>
-              )}
-              {(form.role === 'operator' || form.role === 'reader') ? (
-                <Field label="Communities to read" className="sm:col-span-2" hint="Tick every community this person covers">
-                  <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 p-2">
-                    {communities.filter((c) => !form.water_committee_id || c.water_committee_id === form.water_committee_id).map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={form.assigned_community_ids.includes(c.id)}
-                          onChange={(e) => {
-                            const ids = e.target.checked
-                              ? [...form.assigned_community_ids, c.id]
-                              : form.assigned_community_ids.filter((id) => id !== c.id)
-                            setForm({ ...form, assigned_community_ids: ids, community_id: ids[0] ?? '' })
-                          }}
-                        />
-                        {c.name}
-                      </label>
-                    ))}
-                    {communities.length === 0 && <span className="text-xs text-gray-500">No communities yet</span>}
-                  </div>
-                </Field>
-              ) : (
-              <Field label="Community" className="sm:col-span-2">
-                <select
-                  className={inputClass}
-                  value={form.community_id}
-                  onChange={(e) => setForm({ ...form, community_id: e.target.value })}
-                >
-                  <option value="">All communities</option>
-                  {communities.filter((c) => !form.water_committee_id || c.water_committee_id === form.water_committee_id).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              )}
+              <ScopeFields value={form} onChange={setForm} />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className={secondaryButtonClass} onClick={() => setShowForm(false)}>
+              <button type="button" onClick={() => setShowForm(false)} className={secondaryButtonClass}>
                 Cancel
               </button>
-              <button type="submit" className={primaryButtonClass} disabled={saving}>
+              <button type="submit" disabled={saving} className={primaryButtonClass}>
                 {saving ? 'Creating…' : 'Create account'}
               </button>
             </div>

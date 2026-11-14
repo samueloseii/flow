@@ -73,11 +73,11 @@ export default function MeterReadingField({ onBack }: Props) {
   useEffect(() => {
     api
       .get('/meters/reading-context', {
-        params: user?.community_id ? { community_id: user.community_id } : {},
+        params: {},
       })
       .then((res) => setTargets(res.data))
       .catch(() => setTargets([]))
-  }, [user?.community_id])
+  }, [user?.id])
 
   const target = targets.find((t) => t.connection_id === selected) || null
   const value = parseFloat(readingValue)

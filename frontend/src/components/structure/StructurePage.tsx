@@ -29,7 +29,7 @@ const TITLES: Record<Level, string> = {
   connection: 'Your connection',
   meter: 'Meter',
 }
-const MANAGE = ['super_admin', 'partner_admin', 'community_admin']
+const MANAGE = ['super_admin', 'admin']
 
 // Organization → Partner → Water committee → Community → Connection → Meter, as one outline.
 // The server returns only the branch this login may see, starting at its own level.
@@ -81,7 +81,7 @@ export default function StructurePage() {
         actions={canManage && (
           <>
             {user.role === 'super_admin' && <Link to="/partners" className={secondaryButtonClass}>Organizations &amp; partners</Link>}
-            {['super_admin', 'partner_admin'].includes(user.role) && <Link to="/water-committees" className={secondaryButtonClass}>Water committees</Link>}
+            {(user.role === 'super_admin' || (user.role === 'admin' && user.parent_level !== 'water_committee')) && <Link to="/water-committees" className={secondaryButtonClass}>Water committees</Link>}
             <Link to="/communities" className={secondaryButtonClass}>Communities</Link>
             <Link to="/connections" className={secondaryButtonClass}>Connections &amp; import</Link>
           </>

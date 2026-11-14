@@ -6,10 +6,15 @@ export interface UserInfo {
   email: string
   full_name: string
   role: string
+  parent_level: string | null
+  parent_id: string | null
+  parent_name: string | null
+  access_all_children: boolean
+  community_ids: string[]
+  connection_ids: string[]
+  water_committee_id: string | null
   partner_id: string | null
-  water_committee_id?: string | null
-  connection_id?: string | null
-  community_id: string | null
+  organization_id: string | null
 }
 
 interface AuthState {
@@ -28,7 +33,7 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | null>(null)
 
 // Treasurers administer billing from the office; only operators/readers work in the field.
-const ADMIN_ROLES = ['super_admin', 'partner_admin', 'community_admin', 'treasurer', 'reader']
+const ADMIN_ROLES = ['super_admin', 'admin', 'editor', 'viewer']
 const FIELD_ROLES = ['operator']
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

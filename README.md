@@ -56,26 +56,16 @@ Sign in as `admin@example.com` / `admin123`, then create things top-down:
 5. **Tariffs** → a rising block tariff per committee; assign a special one to individual connections if needed
 6. **Team** → accounts for the people who will use it (see roles below)
 
-### Local test accounts
-Optional. `python -m app.db.seed --demo` fills the database with made-up sample
-communities and these logins — **never run it against a production database**:
-
-| Role | Email | Password |
-|---|---|---|
-| System administrator | `admin@flow.app` | `admin123` |
-| Partner administrator | `admin@<partner>.org` | `partner123` |
-| Operator | see Team page | `operator123` |
-| Treasurer | see Team page | `treasurer123` |
-
 ### Who sees what
-| Role | Sees | Can create accounts for |
+| Role | Where | What |
 |---|---|---|
 | System administrator | everything | any role |
-| Partner administrator | all committees its partner supports | partner admin and below |
-| Water committee administrator | its committee's communities, connections, money | committee admin and below |
-| Treasurer | same committee; billing, payments, expenses | treasurer, operator, viewer |
-| Operator | only the communities ticked on their account; records readings, adds/replaces meters (web field mode or Flow Reader) | — |
-| Viewer (read-only) | a partner, a committee, some communities, or one connection | — |
+| Administrator | an organization, partner or water committee and everything below it | adds, edits and deletes; creates accounts at its level and below |
+| Editor (treasurer) | same levels | edits everything at its level and below (tariffs, billing, payments, expenses) but cannot add or delete |
+| Operator | a water committee, optionally limited to certain communities/circuits or connections | records readings, adds/replaces meters (web field mode or Flow Reader) |
+| Viewer | any level, including a single connection | read-only |
+
+Each account has one parent entity. "Communities" are optional groupings of a committee's connections (distribution lines, meter-reading circuits, neighbourhoods).
 
 A viewer attached to a **single connection** is a community member: they see only that
 connection's readings and bills.

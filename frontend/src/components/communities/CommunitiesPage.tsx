@@ -18,12 +18,8 @@ interface Community {
   name: string
   country: string
   region: string | null
-  total_connections: number
-  water_system_type: string
-  currency: string
-  tariff_fixed: number
-  tariff_per_m3: number
-  water_committee_id: string | null
+  connection_count: number
+  water_committee_id: string
   water_committee_name: string | null
 }
 
@@ -32,24 +28,12 @@ interface Committee {
   name: string
 }
 
-const systemTypeLabel: Record<string, string> = {
-  gravity_fed: 'Gravity-fed',
-  pumped: 'Pumped',
-  mixed: 'Mixed',
-}
-
 const emptyForm = {
   name: '',
   country: '',
   region: '',
-  currency: 'USD',
-  water_system_type: 'gravity_fed',
-  community_size: 'small',
   population: '',
-  tariff_fixed: '',
-  tariff_per_m3: '',
-  partner_id: '',
-  new_partner_name: '',
+  description: '',
   water_committee_id: '',
 }
 
@@ -95,12 +79,8 @@ export default function CommunitiesPage() {
         name: form.name,
         country: form.country,
         region: form.region || null,
-        currency: form.currency,
-        water_system_type: form.water_system_type,
-        community_size: form.community_size,
         population: form.population ? Number(form.population) : null,
-        tariff_fixed: Number(form.tariff_fixed || 0),
-        tariff_per_m3: Number(form.tariff_per_m3 || 0),
+        description: form.description || null,
         water_committee_id: form.water_committee_id,
       })
       setShowForm(false)
@@ -158,9 +138,6 @@ export default function CommunitiesPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 whitespace-nowrap">
-                    {systemTypeLabel[c.water_system_type] ?? c.water_system_type}
-                  </span>
                   <button
                     aria-label={`Delete ${c.name}`}
                     className="text-gray-300 hover:text-red-600"
@@ -230,35 +207,11 @@ export default function CommunitiesPage() {
                   onChange={(e) => setForm({ ...form, population: e.target.value })}
                 />
               </Field>
-              <Field label="Water system">
-                <select
-                  className={inputClass}
-                  value={form.water_system_type}
-                  onChange={(e) => setForm({ ...form, water_system_type: e.target.value })}
-                >
-                  <option value="gravity_fed">Gravity-fed</option>
-                  <option value="pumped">Pumped</option>
-                  <option value="mixed">Mixed</option>
-                </select>
-              </Field>
-              <Field label="Size">
-                <select
-                  className={inputClass}
-                  value={form.community_size}
-                  onChange={(e) => setForm({ ...form, community_size: e.target.value })}
-                >
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                </select>
-              </Field>
-              <Field label="Currency" hint="Three-letter code, e.g. GHS, USD">
+              <Field label="Description" className="sm:col-span-2" hint="e.g. distribution line, meter-reading circuit or neighbourhood">
                 <input
                   className={inputClass}
-                  value={form.currency}
-                  onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
-                  maxLength={5}
-                  required
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
               </Field>
               <Field label="Water committee" className="sm:col-span-2" hint="The committee that runs this water system">

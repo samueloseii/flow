@@ -36,9 +36,20 @@ export interface Connection {
   currency: string | null
 }
 
+export const connectionTypeLabels: Record<string, string> = {
+  household: 'Household',
+  school: 'School',
+  clinic: 'Clinic',
+  commercial: 'Commercial',
+  public_tap: 'Public tap',
+  institution: 'Institution',
+  other: 'Other',
+}
+
 interface Community {
   id: string
   name: string
+  water_committee_id: string
 }
 
 const emptyForm = {
@@ -47,7 +58,9 @@ const emptyForm = {
   address: '',
   phone: '',
   members_count: '1',
+  water_committee_id: '',
   community_id: '',
+  connection_type: 'household',
   meter_serial_number: '',
   meter_brand: '',
   meter_initial_reading: '0',
@@ -58,6 +71,7 @@ export default function ConnectionsPage() {
   const navigate = useNavigate()
   const [connections, setConnections] = useState<Connection[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
+  const [committees, setCommittees] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -83,6 +97,10 @@ export default function ConnectionsPage() {
       .get('/communities/')
       .then((res) => setCommunities(res.data))
       .catch(() => setCommunities([]))
+    api
+      .get('/water-committees/')
+      .then((res) => setCommittees(res.data))
+      .catch(() => setCommittees([]))
   }, [])
 
   async function handleDelete(connection: Connection) {
@@ -101,7 +119,7 @@ export default function ConnectionsPage() {
   }
 
   function openForm() {
-    setForm({ ...emptyForm, community_id: user?.community_id || '' })
+    setForm({ ...emptyForm, water_committee_id: user?.water_committee_id || committees[0]?.id || '' })
     setError('')
     setShowForm(true)
   }
@@ -117,7 +135,9 @@ export default function ConnectionsPage() {
         address: form.address.trim() || null,
         phone: form.phone.trim() || null,
         members_count: Number(form.members_count) || 1,
-        community_id: form.community_id,
+        water_committee_id: form.water_committee_id || null,
+        community_id: form.community_id || null,
+        connection_type: form.connection_type,
         meter_serial_number: form.meter_serial_number.trim() || null,
         meter_brand: form.meter_brand.trim() || null,
         meter_initial_reading: Number(form.meter_initial_reading) || 0,
@@ -282,15 +302,40 @@ export default function ConnectionsPage() {
                   placeholder="María López"
                 />
               </Field>
-              <Field label="Community">
+              <Field label="Water committee">
                 <select
                   required
+                  value={form.water_committee_id}
+                  onChange={(e) => setForm({ ...form, water_committee_id: e.target.value, community_id: '' })}
+                  className={inputClass}
+                >
+                  <option value="">— Select water committee —</option>
+                  {committees.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Type">
+                <select
+                  value={form.connection_type}
+                  onChange={(e) => setForm({ ...form, connection_type: e.target.value })}
+                  className={inputClass}
+                >
+                  {Object.entries(connectionTypeLabels).map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Community / circuit (optional)">
+                <select
                   value={form.community_id}
                   onChange={(e) => setForm({ ...form, community_id: e.target.value })}
                   className={inputClass}
                 >
-                  <option value="">— Select community —</option>
-                  {communities.map((c) => (
+                  <option value="">— Not grouped —</option>
+                  {communities.filter((c) => !form.water_committee_id || c.water_committee_id === form.water_committee_id).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>

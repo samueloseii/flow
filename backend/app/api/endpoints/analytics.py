@@ -19,6 +19,7 @@ from app.models.connection import Connection
 from app.models.maintenance import MaintenanceRecord, MaintenanceStatus
 from app.models.meter import Meter, MeterReading
 from app.models.user import User
+from app.services.scope import require_committee
 from app.schemas.analytics import (
     AgingBucket,
     AnalyticsOverview,
@@ -47,15 +48,23 @@ def _as_utc(value: datetime) -> datetime:
 
 @router.get("/overview", response_model=AnalyticsOverview)
 def overview(
-    community_id: uuid.UUID = Query(...),
+    water_committee_id: uuid.UUID | None = Query(None),
+    community_id: uuid.UUID | None = Query(None),
     months: int = Query(12, ge=3, le=24),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Everything the committee looks at in one call: water in, money in, money out."""
-    community = db.query(Community).filter(Community.id == community_id).first()
-    if not community:
+    community = db.query(Community).filter(Community.id == community_id).first() if community_id else None
+    if community_id and not community:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Community not found")
+    committee_id = water_committee_id or (community.water_committee_id if community else None)
+    if committee_id is None:
+        raise HTTPException(status_code=400, detail="Choose a water committee")
+    committee = require_committee(db, current_user, committee_id)
+    group_filter = (Connection.community_id == community_id) if community_id else Connection.water_committee_id == committee_id
+    expense_filter = (Expense.community_id == community_id) if community_id else Expense.water_committee_id == committee_id
+    maintenance_filter = (MaintenanceRecord.community_id == community_id) if community_id else MaintenanceRecord.water_committee_id == committee_id
 
     now = datetime.now(timezone.utc)
     window: list[tuple[str, str]] = []
@@ -84,7 +93,7 @@ def overview(
     read_connections: dict[str, set[uuid.UUID]] = {key: set() for key, _ in window}
     earliest = datetime.strptime(window[0][0], "%Y-%m").replace(tzinfo=timezone.utc)
 
-    connections = db.query(Connection).filter(Connection.community_id == community_id).all()
+    connections = db.query(Connection).filter(group_filter).all()
     connection_ids = [h.id for h in connections]
     connection_by_id = {h.id: h for h in connections}
 
@@ -136,14 +145,14 @@ def overview(
         if key in buckets:
             buckets[key].collected += payment.amount
 
-    expenses = db.query(Expense).filter(Expense.community_id == community_id).all()
+    expenses = db.query(Expense).filter(expense_filter).all()
     for expense in expenses:
         key = _month_key(_as_utc(expense.expense_date))
         if key in buckets:
             buckets[key].expenses += expense.amount
 
     maintenance_records = (
-        db.query(MaintenanceRecord).filter(MaintenanceRecord.community_id == community_id).all()
+        db.query(MaintenanceRecord).filter(maintenance_filter).all()
     )
     for record in maintenance_records:
         reported_key = _month_key(_as_utc(record.reported_date))
@@ -203,14 +212,14 @@ def overview(
     open_maintenance = (
         db.query(MaintenanceRecord)
         .filter(
-            MaintenanceRecord.community_id == community_id,
+            maintenance_filter,
             MaintenanceRecord.status.in_([MaintenanceStatus.REPORTED, MaintenanceStatus.IN_PROGRESS]),
         )
         .count()
     )
 
     return AnalyticsOverview(
-        currency=community.currency,
+        currency=next((t.currency for t in committee.tariffs if t.is_default), next((t.currency for t in committee.tariffs), "USD")),
         months=series,
         totals=AnalyticsTotals(
             billed=round(total_billed, 2),

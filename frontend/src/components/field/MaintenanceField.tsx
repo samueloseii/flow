@@ -30,7 +30,7 @@ export default function MaintenanceField({ onBack }: Props) {
   const [savedCount, setSavedCount] = useState(0)
 
   async function handleSubmit() {
-    if (!title.trim() || !user?.community_id) return
+    if (!title.trim() || !user?.water_committee_id) return
     setSaving(true)
     setError('')
     try {
@@ -40,7 +40,7 @@ export default function MaintenanceField({ onBack }: Props) {
         category,
         reported_date: new Date().toISOString(),
         reported_via_whatsapp: whatsapp,
-        community_id: user.community_id,
+        water_committee_id: user.water_committee_id,
       })
       setTitle('')
       setDescription('')
