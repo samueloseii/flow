@@ -59,13 +59,13 @@ fun MeterListScreen(
     val filtered = remember(meters, query) {
         if (query.isBlank()) meters
         else meters.filter {
-            it.headOfHousehold.contains(query, true) ||
+            it.contactName.contains(query, true) ||
                 it.accountNumber.contains(query, true) ||
                 (it.communityName ?: "").contains(query, true)
         }
     }
     val grouped = remember(filtered) {
-        filtered.sortedWith(compareBy({ it.communityName ?: "" }, { it.headOfHousehold }))
+        filtered.sortedWith(compareBy({ it.communityName ?: "" }, { it.contactName }))
             .groupBy { it.communityName ?: "Your communities" }
     }
     val showCommunityHeaders = grouped.size > 1
@@ -172,11 +172,11 @@ private fun MeterRow(meter: MeterEntity, onClick: () -> Unit) {
                     .background(FlowSky, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(initials(meter.headOfHousehold), color = FlowBlueDark, fontWeight = FontWeight.SemiBold)
+                Text(initials(meter.contactName), color = FlowBlueDark, fontWeight = FontWeight.SemiBold)
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    meter.headOfHousehold,
+                    meter.contactName,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

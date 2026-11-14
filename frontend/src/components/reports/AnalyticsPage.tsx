@@ -40,7 +40,7 @@ interface MonthlyPoint {
   expenses: number
   net: number
   cash_position: number
-  households_read: number
+  connections_read: number
   reading_coverage: number
   issues_reported: number
   issues_resolved: number
@@ -57,15 +57,15 @@ interface Overview {
     net_balance: number
     collection_rate: number
     consumption_m3: number
-    households: number
-    metered_households: number
+    connections: number
+    metered_connections: number
     open_maintenance: number
   }
   aging: { bucket: string; amount: number; invoices: number }[]
   top_consumers: {
-    household_id: string
+    connection_id: string
     account_number: string
-    head_of_household: string
+    contact_name: string
     consumption_m3: number
   }[]
   invoice_status: { status: string; count: number; amount: number }[]
@@ -87,7 +87,7 @@ function downloadMonthlyCsv(months: MonthlyPoint[], currency: string) {
     `Expenses (${currency})`,
     `Net (${currency})`,
     `Cash position (${currency})`,
-    'Households read',
+    'Connections read',
     'Reading coverage (%)',
     'Issues reported',
     'Issues resolved',
@@ -100,7 +100,7 @@ function downloadMonthlyCsv(months: MonthlyPoint[], currency: string) {
     m.expenses,
     m.net,
     m.cash_position,
-    m.households_read,
+    m.connections_read,
     m.reading_coverage,
     m.issues_reported,
     m.issues_resolved,
@@ -173,7 +173,7 @@ export default function AnalyticsPage() {
   const currency = data?.currency ?? ''
   const hasFinancials = !!data && data.months.some((m) => m.billed || m.collected || m.expenses)
   const hasConsumption = !!data && data.months.some((m) => m.consumption_m3 > 0)
-  const hasReadings = !!data && data.months.some((m) => m.households_read > 0)
+  const hasReadings = !!data && data.months.some((m) => m.connections_read > 0)
   const hasIssues = !!data && data.months.some((m) => m.issues_reported || m.issues_resolved)
   const expenseMix =
     data?.expense_categories?.map((c) => ({
@@ -227,7 +227,7 @@ export default function AnalyticsPage() {
           <EmptyState
             icon={BarChart3}
             title="No community yet"
-            hint="Create a community and register households — analytics build up as readings and payments are recorded."
+            hint="Create a community and register connections — analytics build up as readings and payments are recorded."
           />
         </Card>
       ) : loading || !data ? (
@@ -256,7 +256,7 @@ export default function AnalyticsPage() {
             <StatCard
               label="Water billed"
               value={`${data.totals.consumption_m3} m³`}
-              hint={`${data.totals.metered_households} of ${data.totals.households} households metered`}
+              hint={`${data.totals.metered_connections} of ${data.totals.connections} connections metered`}
             />
           </div>
 
@@ -408,7 +408,7 @@ export default function AnalyticsPage() {
 
             <ChartCard
               title="Reading coverage"
-              subtitle="Share of metered households read each month"
+              subtitle="Share of metered connections read each month"
             >
               {hasReadings ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -418,7 +418,7 @@ export default function AnalyticsPage() {
                     <YAxis domain={[0, 100]} unit="%" {...axisProps} />
                     <Tooltip
                       formatter={(v: number, _name, item) =>
-                        `${v}% (${item.payload.households_read} households)`
+                        `${v}% (${item.payload.connections_read} connections)`
                       }
                     />
                     <Bar
@@ -473,13 +473,13 @@ export default function AnalyticsPage() {
                   const max = data.top_consumers[0].consumption_m3 || 1
                   return (
                     <a
-                      key={h.household_id}
-                      href={`/households/${h.household_id}`}
+                      key={h.connection_id}
+                      href={`/connections/${h.connection_id}`}
                       className="block group"
                     >
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-700 group-hover:text-primary-700">
-                          {h.head_of_household}
+                          {h.contact_name}
                           <span className="text-gray-400"> · {h.account_number}</span>
                         </span>
                         <span className="font-medium text-gray-900">{h.consumption_m3} m³</span>

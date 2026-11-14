@@ -1,6 +1,6 @@
 from app.models.user import User
 from app.models.community import Community
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.meter import Meter, MeterReading
 from app.models.billing import Invoice, Payment
 from app.models.maintenance import MaintenanceRecord
@@ -13,7 +13,7 @@ from app.models.tariff import Tariff
 __all__ = [
     "User",
     "Community",
-    "Household",
+    "Connection",
     "Meter",
     "MeterReading",
     "Invoice",

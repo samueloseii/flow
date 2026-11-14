@@ -7,9 +7,9 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "meters")
 data class MeterEntity(
     @PrimaryKey val meterId: String,
-    val householdId: String,
+    val connectionId: String,
     val accountNumber: String,
-    val headOfHousehold: String,
+    val contactName: String,
     val address: String?,
     val communityId: String,
     val serialNumber: String,
@@ -34,7 +34,7 @@ data class ReadingEntity(
     @PrimaryKey val clientId: String,
     val meterId: String,
     val accountNumber: String,
-    val headOfHousehold: String,
+    val contactName: String,
     val readingValue: Double,
     val previousValue: Double,
     val readingDate: String,

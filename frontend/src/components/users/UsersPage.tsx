@@ -23,7 +23,7 @@ interface TeamMember {
   community_id: string | null
   water_committee_id: string | null
   partner_id?: string | null
-  household_id?: string | null
+  connection_id?: string | null
   assigned_community_ids: string[]
 }
 
@@ -37,10 +37,10 @@ interface Partner {
   name: string
 }
 
-interface HouseholdOption {
+interface ConnectionOption {
   id: string
   account_number: string
-  head_of_household: string
+  contact_name: string
   community_id: string
 }
 
@@ -56,7 +56,7 @@ const roleOptions = [
   { value: 'community_admin', label: 'Water committee administrator — runs the committee' },
   { value: 'partner_admin', label: 'Partner administrator — all committees the partner supports' },
   { value: 'super_admin', label: 'System administrator — everything' },
-  { value: 'reader', label: 'Viewer — read-only at a partner, committee, community or single household' },
+  { value: 'reader', label: 'Viewer — read-only at a partner, committee, community or single connection' },
 ]
 
 const roleLabels: Record<string, string> = {
@@ -77,7 +77,7 @@ const emptyForm = {
   community_id: '',
   water_committee_id: '',
   partner_id: '',
-  household_id: '',
+  connection_id: '',
   assigned_community_ids: [] as string[],
 }
 
@@ -86,20 +86,20 @@ export default function UsersPage() {
   const [communities, setCommunities] = useState<Community[]>([])
   const [committees, setCommittees] = useState<Committee[]>([])
   const [partners, setPartners] = useState<Partner[]>([])
-  const [households, setHouseholds] = useState<HouseholdOption[]>([])
+  const [connections, setConnections] = useState<ConnectionOption[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<TeamMember | null>(null)
-  const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '', water_committee_id: '', partner_id: '', household_id: '', assigned_community_ids: [] as string[] })
+  const [editForm, setEditForm] = useState({ full_name: '', phone: '', role: '', community_id: '', water_committee_id: '', partner_id: '', connection_id: '', assigned_community_ids: [] as string[] })
 
   function scopeLabel(m: TeamMember): string {
     if (m.role === 'super_admin') return 'Everything'
-    if (m.household_id) {
-      const h = households.find((x) => x.id === m.household_id)
-      return h ? `Household ${h.account_number} — ${h.head_of_household}` : 'One household'
+    if (m.connection_id) {
+      const h = connections.find((x) => x.id === m.connection_id)
+      return h ? `Connection ${h.account_number} — ${h.contact_name}` : 'One connection'
     }
     if (m.assigned_community_ids?.length) {
       const names = m.assigned_community_ids.map((id) => communityName(id)).filter((n) => n && n !== '—')
@@ -115,7 +115,7 @@ export default function UsersPage() {
     setLoading(true)
     api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
     api.get('/partners/').then((r) => setPartners(r.data)).catch(() => setPartners([]))
-    api.get('/households/').then((r) => setHouseholds(r.data)).catch(() => setHouseholds([]))
+    api.get('/connections/').then((r) => setConnections(r.data)).catch(() => setConnections([]))
     Promise.all([api.get('/auth/users'), api.get('/communities/')])
       .then(([usersRes, communitiesRes]) => {
         setMembers(usersRes.data)
@@ -141,7 +141,7 @@ export default function UsersPage() {
         community_id: form.community_id || null,
         water_committee_id: form.water_committee_id || null,
         partner_id: form.partner_id || null,
-        household_id: form.role === 'reader' ? form.household_id || null : null,
+        connection_id: form.role === 'reader' ? form.connection_id || null : null,
         assigned_community_ids: form.role === 'operator' || form.role === 'reader' ? form.assigned_community_ids : [],
       })
       setShowForm(false)
@@ -169,8 +169,8 @@ export default function UsersPage() {
         water_committee_id: editForm.water_committee_id || null,
         clear_water_committee: !editForm.water_committee_id,
         partner_id: editForm.partner_id || null,
-        household_id: editForm.role === 'reader' ? editForm.household_id || null : null,
-        clear_household: editForm.role !== 'reader' || !editForm.household_id,
+        connection_id: editForm.role === 'reader' ? editForm.connection_id || null : null,
+        clear_connection: editForm.role !== 'reader' || !editForm.connection_id,
         assigned_community_ids: editForm.assigned_community_ids,
       })
       setEditing(null)
@@ -266,7 +266,7 @@ export default function UsersPage() {
                             community_id: m.community_id ?? '',
                             water_committee_id: m.water_committee_id ?? '',
                             partner_id: m.partner_id ?? '',
-                            household_id: m.household_id ?? '',
+                            connection_id: m.connection_id ?? '',
                             assigned_community_ids: m.assigned_community_ids ?? [],
                           })
                           setError('')
@@ -354,15 +354,15 @@ export default function UsersPage() {
                 </select>
               </Field>
               {editForm.role === 'reader' && (
-                <Field label="Single household (optional)" className="sm:col-span-2" hint="For a community member who should only see their own household's readings and bills">
+                <Field label="Single connection (optional)" className="sm:col-span-2" hint="For a community member who should only see their own connection's readings and bills">
                   <select
                     className={inputClass}
-                    value={editForm.household_id}
-                    onChange={(e) => setEditForm({ ...editForm, household_id: e.target.value })}
+                    value={editForm.connection_id}
+                    onChange={(e) => setEditForm({ ...editForm, connection_id: e.target.value })}
                   >
-                    <option value="">Not limited to one household</option>
-                    {households.filter((h) => editForm.assigned_community_ids.length === 0 || editForm.assigned_community_ids.includes(h.community_id)).map((h) => (
-                      <option key={h.id} value={h.id}>{h.account_number} — {h.head_of_household}</option>
+                    <option value="">Not limited to one connection</option>
+                    {connections.filter((h) => editForm.assigned_community_ids.length === 0 || editForm.assigned_community_ids.includes(h.community_id)).map((h) => (
+                      <option key={h.id} value={h.id}>{h.account_number} — {h.contact_name}</option>
                     ))}
                   </select>
                 </Field>
@@ -504,15 +504,15 @@ export default function UsersPage() {
                 </select>
               </Field>
               {form.role === 'reader' && (
-                <Field label="Single household (optional)" className="sm:col-span-2" hint="For a community member who should only see their own household's readings and bills">
+                <Field label="Single connection (optional)" className="sm:col-span-2" hint="For a community member who should only see their own connection's readings and bills">
                   <select
                     className={inputClass}
-                    value={form.household_id}
-                    onChange={(e) => setForm({ ...form, household_id: e.target.value })}
+                    value={form.connection_id}
+                    onChange={(e) => setForm({ ...form, connection_id: e.target.value })}
                   >
-                    <option value="">Not limited to one household</option>
-                    {households.filter((h) => form.assigned_community_ids.length === 0 || form.assigned_community_ids.includes(h.community_id)).map((h) => (
-                      <option key={h.id} value={h.id}>{h.account_number} — {h.head_of_household}</option>
+                    <option value="">Not limited to one connection</option>
+                    {connections.filter((h) => form.assigned_community_ids.length === 0 || form.assigned_community_ids.includes(h.community_id)).map((h) => (
+                      <option key={h.id} value={h.id}>{h.account_number} — {h.contact_name}</option>
                     ))}
                   </select>
                 </Field>

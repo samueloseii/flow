@@ -15,7 +15,7 @@ from app.db.session import get_db
 from app.models.billing import Invoice, InvoiceStatus, Payment
 from app.models.community import Community
 from app.models.expense import Expense
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.maintenance import MaintenanceRecord, MaintenanceStatus
 from app.models.meter import Meter, MeterReading
 from app.models.user import User
@@ -74,33 +74,33 @@ def overview(
             expenses=0.0,
             net=0.0,
             cash_position=0.0,
-            households_read=0,
+            connections_read=0,
             reading_coverage=0.0,
             issues_reported=0,
             issues_resolved=0,
         )
         for key, label in window
     }
-    read_households: dict[str, set[uuid.UUID]] = {key: set() for key, _ in window}
+    read_connections: dict[str, set[uuid.UUID]] = {key: set() for key, _ in window}
     earliest = datetime.strptime(window[0][0], "%Y-%m").replace(tzinfo=timezone.utc)
 
-    households = db.query(Household).filter(Household.community_id == community_id).all()
-    household_ids = [h.id for h in households]
-    household_by_id = {h.id: h for h in households}
+    connections = db.query(Connection).filter(Connection.community_id == community_id).all()
+    connection_ids = [h.id for h in connections]
+    connection_by_id = {h.id: h for h in connections}
 
     meters = (
-        db.query(Meter).filter(Meter.household_id.in_(household_ids)).all()
-        if household_ids
+        db.query(Meter).filter(Meter.connection_id.in_(connection_ids)).all()
+        if connection_ids
         else []
     )
-    meter_to_household = {m.id: m.household_id for m in meters}
+    meter_to_connection = {m.id: m.connection_id for m in meters}
 
-    consumption_by_household: dict[uuid.UUID, float] = {}
+    consumption_by_connection: dict[uuid.UUID, float] = {}
     if meters:
         readings = (
             db.query(MeterReading)
             .filter(
-                MeterReading.meter_id.in_(list(meter_to_household)),
+                MeterReading.meter_id.in_(list(meter_to_connection)),
                 MeterReading.reading_date >= earliest,
             )
             .all()
@@ -109,16 +109,16 @@ def overview(
             key = _month_key(_as_utc(reading.reading_date))
             if key in buckets:
                 buckets[key].consumption_m3 += reading.consumption_m3 or 0.0
-            hh_id = meter_to_household[reading.meter_id]
-            if key in read_households:
-                read_households[key].add(hh_id)
-            consumption_by_household[hh_id] = (
-                consumption_by_household.get(hh_id, 0.0) + (reading.consumption_m3 or 0.0)
+            hh_id = meter_to_connection[reading.meter_id]
+            if key in read_connections:
+                read_connections[key].add(hh_id)
+            consumption_by_connection[hh_id] = (
+                consumption_by_connection.get(hh_id, 0.0) + (reading.consumption_m3 or 0.0)
             )
 
     invoices = (
-        db.query(Invoice).filter(Invoice.household_id.in_(household_ids)).all()
-        if household_ids
+        db.query(Invoice).filter(Invoice.connection_id.in_(connection_ids)).all()
+        if connection_ids
         else []
     )
     for invoice in invoices:
@@ -127,8 +127,8 @@ def overview(
             buckets[key].billed += invoice.total_amount
 
     payments = (
-        db.query(Payment).filter(Payment.household_id.in_(household_ids)).all()
-        if household_ids
+        db.query(Payment).filter(Payment.connection_id.in_(connection_ids)).all()
+        if connection_ids
         else []
     )
     for payment in payments:
@@ -164,9 +164,9 @@ def overview(
         point.net = round(point.collected - point.expenses, 2)
         running_cash += point.net
         point.cash_position = round(running_cash, 2)
-        point.households_read = len(read_households[point.month])
+        point.connections_read = len(read_connections[point.month])
         point.reading_coverage = (
-            round(point.households_read / len(meters) * 100, 1) if meters else 0.0
+            round(point.connections_read / len(meters) * 100, 1) if meters else 0.0
         )
 
     total_billed = sum(i.total_amount for i in invoices)
@@ -198,7 +198,7 @@ def overview(
         entry[0] += 1
         entry[1] += invoice.total_amount
 
-    top = sorted(consumption_by_household.items(), key=lambda item: item[1], reverse=True)[:8]
+    top = sorted(consumption_by_connection.items(), key=lambda item: item[1], reverse=True)[:8]
 
     open_maintenance = (
         db.query(MaintenanceRecord)
@@ -220,8 +220,8 @@ def overview(
             net_balance=round(total_collected - total_expenses, 2),
             collection_rate=round(total_collected / total_billed * 100, 1) if total_billed else 0.0,
             consumption_m3=round(sum(p.consumption_m3 for p in series), 1),
-            households=len(households),
-            metered_households=len(meters),
+            connections=len(connections),
+            metered_connections=len(meters),
             open_maintenance=open_maintenance,
         ),
         aging=[
@@ -230,13 +230,13 @@ def overview(
         ],
         top_consumers=[
             TopConsumer(
-                household_id=hh_id,
-                account_number=household_by_id[hh_id].account_number,
-                head_of_household=household_by_id[hh_id].head_of_household,
+                connection_id=hh_id,
+                account_number=connection_by_id[hh_id].account_number,
+                contact_name=connection_by_id[hh_id].contact_name,
                 consumption_m3=round(value, 1),
             )
             for hh_id, value in top
-            if hh_id in household_by_id
+            if hh_id in connection_by_id
         ],
         invoice_status=[
             StatusSlice(status=name, count=int(counts[0]), amount=round(counts[1], 2))

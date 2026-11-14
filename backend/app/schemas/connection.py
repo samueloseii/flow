@@ -3,18 +3,18 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.models.household import HouseholdStatus
+from app.models.connection import ConnectionStatus
 from app.schemas.billing import InvoiceResponse, PaymentResponse
 from app.schemas.meter import MeterReadingResponse, MeterResponse
 
 
-class HouseholdCreate(BaseModel):
+class ConnectionCreate(BaseModel):
     account_number: str
-    head_of_household: str
+    contact_name: str
     address: str | None = None
     phone: str | None = None
     members_count: int = 1
-    status: HouseholdStatus = HouseholdStatus.ACTIVE
+    status: ConnectionStatus = ConnectionStatus.ACTIVE
     has_meter: bool = False
     latitude: float | None = None
     longitude: float | None = None
@@ -27,12 +27,12 @@ class HouseholdCreate(BaseModel):
     meter_initial_reading: float = 0.0
 
 
-class HouseholdUpdate(BaseModel):
-    head_of_household: str | None = None
+class ConnectionUpdate(BaseModel):
+    contact_name: str | None = None
     address: str | None = None
     phone: str | None = None
     members_count: int | None = None
-    status: HouseholdStatus | None = None
+    status: ConnectionStatus | None = None
     has_meter: bool | None = None
     latitude: float | None = None
     longitude: float | None = None
@@ -41,14 +41,14 @@ class HouseholdUpdate(BaseModel):
     clear_tariff: bool = False
 
 
-class HouseholdResponse(BaseModel):
+class ConnectionResponse(BaseModel):
     id: uuid.UUID
     account_number: str
-    head_of_household: str
+    contact_name: str
     address: str | None
     phone: str | None
     members_count: int
-    status: HouseholdStatus
+    status: ConnectionStatus
     has_meter: bool
     outstanding_balance: float
     latitude: float | None
@@ -74,8 +74,8 @@ class ConsumptionPoint(BaseModel):
     consumption_m3: float
 
 
-class HouseholdDetail(BaseModel):
-    household: HouseholdResponse
+class ConnectionDetail(BaseModel):
+    connection: ConnectionResponse
     consumption_history: list[ConsumptionPoint]
     invoices: list[InvoiceResponse]
     payments: list[PaymentResponse]

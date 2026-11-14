@@ -43,7 +43,7 @@ def flag_reading(reading_value: float, previous_value: float, average: float) ->
     if average > 0 and consumption > average * HIGH_CONSUMPTION_RATIO:
         pct = round((consumption / average - 1) * 100)
         return (
-            f"Consumption {consumption:g} m³ is {pct}% above this household's "
+            f"Consumption {consumption:g} m³ is {pct}% above this connection's "
             f"average of {average:.1f} m³ — possible leak or misread."
         )
     return None

@@ -10,12 +10,12 @@ from app.api.deps import ADMIN_ROLES, get_current_user, require_role
 from app.db.session import get_db
 from app.models.billing import Invoice, InvoiceStatus, Payment
 from app.models.community import Community
-from app.models.household import Household, HouseholdStatus
+from app.models.connection import Connection, ConnectionStatus
 from app.models.meter import MeterReading
 from app.models.tariff import Tariff
 from app.models.user import User
 from app.schemas.meter import MeterReadingResponse
-from app.services.scope import require_community, require_household, require_committee, scope_households
+from app.services.scope import require_community, require_connection, require_committee, scope_connections
 from app.schemas.billing import (
     InvoiceCreate,
     InvoiceGenerateRequest,
@@ -44,18 +44,18 @@ def _apply_to_invoice(invoice: Invoice, amount: float) -> None:
         invoice.status = InvoiceStatus.PARTIAL
 
 
-def _invoice_response(invoice: Invoice, household: Household | None) -> InvoiceResponse:
+def _invoice_response(invoice: Invoice, connection: Connection | None) -> InvoiceResponse:
     response = InvoiceResponse.model_validate(invoice)
-    if household:
-        response.household_name = household.head_of_household
-        response.account_number = household.account_number
-        response.community_id = household.community_id
+    if connection:
+        response.connection_name = connection.contact_name
+        response.account_number = connection.account_number
+        response.community_id = connection.community_id
     return response
 
 
 @router.get("/invoices", response_model=list[InvoiceResponse])
 def list_invoices(
-    household_id: uuid.UUID | None = Query(None),
+    connection_id: uuid.UUID | None = Query(None),
     community_id: uuid.UUID | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     unpaid_only: bool = Query(False),
@@ -67,12 +67,12 @@ def list_invoices(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Invoice, Household).join(Household, Invoice.household_id == Household.id)
-    query = scope_households(db, current_user, query)
-    if household_id:
-        query = query.filter(Invoice.household_id == household_id)
+    query = db.query(Invoice, Connection).join(Connection, Invoice.connection_id == Connection.id)
+    query = scope_connections(db, current_user, query)
+    if connection_id:
+        query = query.filter(Invoice.connection_id == connection_id)
     if community_id:
-        query = query.filter(Household.community_id == community_id)
+        query = query.filter(Connection.community_id == community_id)
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
     if unpaid_only:
@@ -85,18 +85,18 @@ def list_invoices(
         term = f"%{search.strip()}%"
         query = query.filter(
             or_(
-                Household.head_of_household.ilike(term),
-                Household.account_number.ilike(term),
+                Connection.contact_name.ilike(term),
+                Connection.account_number.ilike(term),
                 Invoice.invoice_number.ilike(term),
             )
         )
     rows = (
-        query.order_by(Invoice.billing_period_start.desc(), Household.account_number)
+        query.order_by(Invoice.billing_period_start.desc(), Connection.account_number)
         .offset(skip)
         .limit(limit)
         .all()
     )
-    return [_invoice_response(invoice, household) for invoice, household in rows]
+    return [_invoice_response(invoice, connection) for invoice, connection in rows]
 
 
 @router.post("/invoices/generate", response_model=InvoiceGenerateResult)
@@ -105,9 +105,9 @@ def generate_invoices(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
-    """Bill every active household with readings in the period.
+    """Bill every active connection with readings in the period.
 
-    Each household is charged on its own tariff (or the committee's default tariff).
+    Each connection is charged on its own tariff (or the committee's default tariff).
     Communities without any tariff fall back to their fixed + per-m³ rates.
     The readings used are stamped with the bill so they can be traced later.
     """
@@ -137,17 +137,17 @@ def generate_invoices(
                 .filter(Tariff.is_default.is_(True))
                 .first()
             )
-        households = (
-            db.query(Household)
-            .filter(Household.community_id == community.id)
-            .filter(Household.status == HouseholdStatus.ACTIVE)
-            .order_by(Household.account_number)
+        connections = (
+            db.query(Connection)
+            .filter(Connection.community_id == community.id)
+            .filter(Connection.status == ConnectionStatus.ACTIVE)
+            .order_by(Connection.account_number)
             .all()
         )
-        for household in households:
+        for connection in connections:
             already = (
                 db.query(Invoice)
-                .filter(Invoice.household_id == household.id)
+                .filter(Invoice.connection_id == connection.id)
                 .filter(Invoice.billing_period_start == payload.billing_period_start)
                 .first()
             )
@@ -155,7 +155,7 @@ def generate_invoices(
                 skipped_existing += 1
                 continue
 
-            meter_ids = [m.id for m in household.meters]
+            meter_ids = [m.id for m in connection.meters]
             readings = (
                 db.query(MeterReading)
                 .filter(MeterReading.meter_id.in_(meter_ids))
@@ -171,7 +171,7 @@ def generate_invoices(
                 skipped_no_reading += 1
                 continue
 
-            tariff = household.tariff or default_tariff
+            tariff = connection.tariff or default_tariff
             if tariff:
                 fixed, variable, _blocks = tariff.charge_for(consumption)
                 currency = tariff.currency
@@ -196,27 +196,27 @@ def generate_invoices(
                 balance_due=total,
                 currency=currency,
                 due_date=payload.due_date,
-                household_id=household.id,
+                connection_id=connection.id,
                 notes=note,
             )
             db.add(invoice)
             db.flush()
             for reading in readings:
                 reading.invoice_id = invoice.id
-            household.outstanding_balance += total
+            connection.outstanding_balance += total
             created.append(invoice)
 
     db.commit()
     for invoice in created:
         db.refresh(invoice)
 
-    by_id = {h.id: h for h in households}
+    by_id = {h.id: h for h in connections}
     return InvoiceGenerateResult(
         created=len(created),
         skipped_existing=skipped_existing,
         skipped_no_reading=skipped_no_reading,
         skipped_no_tariff=skipped_no_tariff,
-        invoices=[_invoice_response(inv, by_id.get(inv.household_id)) for inv in created],
+        invoices=[_invoice_response(inv, by_id.get(inv.connection_id)) for inv in created],
     )
 
 
@@ -237,7 +237,7 @@ def create_invoice(
         balance_due=payload.total_amount,
         currency=payload.currency,
         due_date=payload.due_date,
-        household_id=payload.household_id,
+        connection_id=payload.connection_id,
         notes=payload.notes,
     )
     db.add(invoice)
@@ -248,7 +248,7 @@ def create_invoice(
 
 @router.get("/payments", response_model=list[PaymentResponse])
 def list_payments(
-    household_id: uuid.UUID | None = Query(None),
+    connection_id: uuid.UUID | None = Query(None),
     community_id: uuid.UUID | None = Query(None),
     skip: int = 0,
     limit: int = 100,
@@ -256,23 +256,23 @@ def list_payments(
     current_user: User = Depends(get_current_user),
 ):
     query = (
-        db.query(Payment, Household, Invoice)
-        .join(Household, Payment.household_id == Household.id)
+        db.query(Payment, Connection, Invoice)
+        .join(Connection, Payment.connection_id == Connection.id)
         .outerjoin(Invoice, Payment.invoice_id == Invoice.id)
     )
-    query = scope_households(db, current_user, query)
-    if household_id:
-        query = query.filter(Payment.household_id == household_id)
+    query = scope_connections(db, current_user, query)
+    if connection_id:
+        query = query.filter(Payment.connection_id == connection_id)
     if community_id:
-        query = query.filter(Household.community_id == community_id)
+        query = query.filter(Connection.community_id == community_id)
     rows = (
         query.order_by(Payment.payment_date.desc()).offset(skip).limit(limit).all()
     )
     results = []
-    for payment, household, invoice in rows:
+    for payment, connection, invoice in rows:
         response = PaymentResponse.model_validate(payment)
-        response.household_name = household.head_of_household
-        response.account_number = household.account_number
+        response.connection_name = connection.contact_name
+        response.account_number = connection.account_number
         response.invoice_number = invoice.invoice_number if invoice else None
         results.append(response)
     return results
@@ -284,7 +284,7 @@ def create_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
-    require_household(db, current_user, payload.household_id)
+    require_connection(db, current_user, payload.connection_id)
     payment = Payment(**payload.model_dump())
     db.add(payment)
 
@@ -293,10 +293,10 @@ def create_payment(
         if invoice:
             _apply_to_invoice(invoice, payload.amount)
     else:
-        # Settle the household's oldest outstanding invoices first.
+        # Settle the connection's oldest outstanding invoices first.
         outstanding = (
             db.query(Invoice)
-            .filter(Invoice.household_id == payload.household_id)
+            .filter(Invoice.connection_id == payload.connection_id)
             .filter(Invoice.status.in_(UNPAID_STATUSES))
             .order_by(Invoice.billing_period_end)
             .all()
@@ -311,10 +311,10 @@ def create_payment(
             if payment.invoice_id is None:
                 payment.invoice_id = invoice.id
 
-    # Update household outstanding balance
-    household = db.query(Household).filter(Household.id == payload.household_id).first()
-    if household:
-        household.outstanding_balance = max(0, household.outstanding_balance - payload.amount)
+    # Update connection outstanding balance
+    connection = db.query(Connection).filter(Connection.id == payload.connection_id).first()
+    if connection:
+        connection.outstanding_balance = max(0, connection.outstanding_balance - payload.amount)
 
     db.commit()
     db.refresh(payment)
@@ -322,7 +322,7 @@ def create_payment(
 
 
 class BillDetail(BaseModel):
-    household_name: str
+    connection_name: str
     account_number: str
     community_name: str
     country: str
@@ -353,20 +353,20 @@ def get_printable_bill(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    household = db.query(Household).filter(Household.id == invoice.household_id).first()
-    community = db.query(Community).filter(Community.id == household.community_id).first() if household else None
+    connection = db.query(Connection).filter(Connection.id == invoice.connection_id).first()
+    community = db.query(Community).filter(Community.id == connection.community_id).first() if connection else None
 
-    if household:
-        require_household(db, current_user, household.id)
+    if connection:
+        require_connection(db, current_user, connection.id)
     readings = (
         db.query(MeterReading)
         .filter(MeterReading.invoice_id == invoice.id)
         .order_by(MeterReading.reading_date)
         .all()
     )
-    if not readings and household:
+    if not readings and connection:
         # Bills from before readings were linked: fall back to the latest two on the active meter.
-        meter = household.meter
+        meter = connection.meter
         if meter:
             readings = (
                 db.query(MeterReading)
@@ -386,8 +386,8 @@ def get_printable_bill(
     period_str = f"{invoice.billing_period_start.strftime('%b %d')} - {invoice.billing_period_end.strftime('%b %d, %Y')}"
 
     return BillDetail(
-        household_name=household.head_of_household if household else "Unknown",
-        account_number=household.account_number if household else "N/A",
+        connection_name=connection.contact_name if connection else "Unknown",
+        account_number=connection.account_number if connection else "N/A",
         community_name=community.name if community else "Unknown",
         country=community.country if community else "",
         currency=invoice.currency,
@@ -438,11 +438,11 @@ def delete_invoice(
             status_code=status.HTTP_409_CONFLICT,
             detail="Delete the payments on this bill first",
         )
-    household = db.query(Household).filter(Household.id == invoice.household_id).first()
-    if household:
-        require_household(db, current_user, household.id)
-        household.outstanding_balance = round(
-            max(0.0, household.outstanding_balance - invoice.balance_due), 2
+    connection = db.query(Connection).filter(Connection.id == invoice.connection_id).first()
+    if connection:
+        require_connection(db, current_user, connection.id)
+        connection.outstanding_balance = round(
+            max(0.0, connection.outstanding_balance - invoice.balance_due), 2
         )
     db.query(MeterReading).filter(MeterReading.invoice_id == invoice_id).update(
         {MeterReading.invoice_id: None}, synchronize_session=False
@@ -462,7 +462,7 @@ def delete_payment(
     if not payment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
     invoice_id = payment.invoice_id
-    household_id = payment.household_id
+    connection_id = payment.connection_id
     amount = payment.amount
     db.delete(payment)
     db.flush()
@@ -470,7 +470,7 @@ def delete_payment(
         invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
         if invoice:
             _recalculate_invoice(db, invoice)
-    household = db.query(Household).filter(Household.id == household_id).first()
-    if household:
-        household.outstanding_balance = round(household.outstanding_balance + amount, 2)
+    connection = db.query(Connection).filter(Connection.id == connection_id).first()
+    if connection:
+        connection.outstanding_balance = round(connection.outstanding_balance + amount, 2)
     db.commit()

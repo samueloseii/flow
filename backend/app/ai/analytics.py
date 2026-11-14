@@ -10,32 +10,32 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.billing import Invoice, InvoiceStatus, Payment
-from app.models.household import Household, HouseholdStatus
+from app.models.connection import Connection, ConnectionStatus
 from app.models.maintenance import MaintenanceRecord, MaintenanceStatus
 from app.models.meter import Meter, MeterReading
 
 
 def get_payment_risk_scores(db: Session, community_id: str) -> list[dict]:
-    """Identify households at risk of non-payment based on payment history."""
-    households = (
-        db.query(Household)
-        .filter(Household.community_id == community_id, Household.status == HouseholdStatus.ACTIVE)
+    """Identify connections at risk of non-payment based on payment history."""
+    connections = (
+        db.query(Connection)
+        .filter(Connection.community_id == community_id, Connection.status == ConnectionStatus.ACTIVE)
         .all()
     )
 
     risk_scores = []
-    for household in households:
+    for connection in connections:
         overdue_invoices = (
             db.query(Invoice)
             .filter(
-                Invoice.household_id == household.id,
+                Invoice.connection_id == connection.id,
                 Invoice.status.in_([InvoiceStatus.OVERDUE, InvoiceStatus.PENDING]),
             )
             .count()
         )
         total_arrears = (
             db.query(func.coalesce(func.sum(Invoice.balance_due), 0))
-            .filter(Invoice.household_id == household.id)
+            .filter(Invoice.connection_id == connection.id)
             .scalar()
         )
 
@@ -46,9 +46,9 @@ def get_payment_risk_scores(db: Session, community_id: str) -> list[dict]:
             risk_level = "medium"
 
         risk_scores.append({
-            "household_id": str(household.id),
-            "account_number": household.account_number,
-            "head_of_household": household.head_of_household,
+            "connection_id": str(connection.id),
+            "account_number": connection.account_number,
+            "contact_name": connection.contact_name,
             "overdue_invoices": overdue_invoices,
             "total_arrears": float(total_arrears),
             "risk_level": risk_level,
@@ -60,14 +60,14 @@ def get_payment_risk_scores(db: Session, community_id: str) -> list[dict]:
 
 def detect_consumption_anomalies(db: Session, community_id: str) -> list[dict]:
     """Detect unusual consumption patterns in meter readings."""
-    household_ids = (
-        db.query(Household.id)
-        .filter(Household.community_id == community_id)
+    connection_ids = (
+        db.query(Connection.id)
+        .filter(Connection.community_id == community_id)
         .subquery()
     )
     meters = (
         db.query(Meter)
-        .filter(Meter.household_id.in_(household_ids))
+        .filter(Meter.connection_id.in_(connection_ids))
         .all()
     )
 
@@ -95,7 +95,7 @@ def detect_consumption_anomalies(db: Session, community_id: str) -> list[dict]:
             anomalies.append({
                 "meter_id": str(meter.id),
                 "serial_number": meter.serial_number,
-                "household_id": str(meter.household_id),
+                "connection_id": str(meter.connection_id),
                 "latest_consumption": latest,
                 "avg_consumption": round(avg_consumption, 2),
                 "deviation_pct": round((latest - avg_consumption) / avg_consumption * 100, 1),
@@ -106,7 +106,7 @@ def detect_consumption_anomalies(db: Session, community_id: str) -> list[dict]:
             anomalies.append({
                 "meter_id": str(meter.id),
                 "serial_number": meter.serial_number,
-                "household_id": str(meter.household_id),
+                "connection_id": str(meter.connection_id),
                 "latest_consumption": latest,
                 "avg_consumption": round(avg_consumption, 2),
                 "deviation_pct": round((avg_consumption - latest) / avg_consumption * 100, 1),
@@ -164,20 +164,20 @@ def _maintenance_recommendation(priority: str, age_days: int) -> str:
 
 def get_financial_sustainability_alerts(db: Session, community_id: str) -> list[dict]:
     """Generate financial sustainability alerts for a community."""
-    household_ids = (
-        db.query(Household.id)
-        .filter(Household.community_id == community_id)
+    connection_ids = (
+        db.query(Connection.id)
+        .filter(Connection.community_id == community_id)
         .subquery()
     )
 
     total_invoiced = float(
         db.query(func.coalesce(func.sum(Invoice.total_amount), 0))
-        .filter(Invoice.household_id.in_(household_ids))
+        .filter(Invoice.connection_id.in_(connection_ids))
         .scalar()
     )
     total_paid = float(
         db.query(func.coalesce(func.sum(Payment.amount), 0))
-        .filter(Payment.household_id.in_(household_ids))
+        .filter(Payment.connection_id.in_(connection_ids))
         .scalar()
     )
 
@@ -195,7 +195,7 @@ def get_financial_sustainability_alerts(db: Session, community_id: str) -> list[
             "type": "low_collection_rate",
             "severity": "high",
             "message": f"Collection rate is {collection_rate:.1f}% — below the 70% sustainability threshold",
-            "recommendation": "Review arrears, engage with delinquent households, consider payment plans",
+            "recommendation": "Review arrears, engage with delinquent connections, consider payment plans",
         })
 
     if total_paid > 0 and maintenance_costs > total_paid * 0.5:
@@ -209,14 +209,14 @@ def get_financial_sustainability_alerts(db: Session, community_id: str) -> list[
     overdue_count = (
         db.query(Invoice)
         .filter(
-            Invoice.household_id.in_(household_ids),
+            Invoice.connection_id.in_(connection_ids),
             Invoice.status == InvoiceStatus.OVERDUE,
         )
         .count()
     )
     total_invoices = (
         db.query(Invoice)
-        .filter(Invoice.household_id.in_(household_ids))
+        .filter(Invoice.connection_id.in_(connection_ids))
         .count()
     )
     if total_invoices > 0 and overdue_count / total_invoices > 0.3:

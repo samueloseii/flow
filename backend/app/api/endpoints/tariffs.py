@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.tariff import Tariff
 from app.models.user import User, UserRole
 from app.schemas.tariff import TariffCreate, TariffPreview, TariffResponse, TariffUpdate
@@ -18,7 +18,7 @@ TARIFF_EDITORS = (UserRole.SUPER_ADMIN, UserRole.PARTNER_ADMIN, UserRole.COMMUNI
 
 def _response(db: Session, tariff: Tariff) -> TariffResponse:
     response = TariffResponse.model_validate(tariff)
-    response.household_count = db.query(Household).filter(Household.tariff_id == tariff.id).count()
+    response.connection_count = db.query(Connection).filter(Connection.tariff_id == tariff.id).count()
     return response
 
 
@@ -124,10 +124,10 @@ def delete_tariff(
     current_user: User = Depends(require_role(*TARIFF_EDITORS)),
 ):
     tariff = _require_tariff(db, current_user, tariff_id)
-    if db.query(Household).filter(Household.tariff_id == tariff_id).count():
+    if db.query(Connection).filter(Connection.tariff_id == tariff_id).count():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Households still use this tariff. Move them to another tariff first.",
+            detail="Connections still use this tariff. Move them to another tariff first.",
         )
     db.delete(tariff)
     db.commit()

@@ -25,7 +25,7 @@ class UserResponse(BaseModel):
     partner_id: str | None = None
     water_committee_id: str | None = None
     community_id: str | None = None
-    household_id: str | None = None
+    connection_id: str | None = None
     assigned_community_ids: list[str] = []
 
 
@@ -39,7 +39,7 @@ class RegisterRequest(BaseModel):
     partner_id: uuid.UUID | None = None
     water_committee_id: uuid.UUID | None = None
     community_id: uuid.UUID | None = None
-    household_id: uuid.UUID | None = None
+    connection_id: uuid.UUID | None = None
     assigned_community_ids: list[uuid.UUID] | None = None
 
 
@@ -51,8 +51,8 @@ class UserUpdate(BaseModel):
     clear_community: bool = False
     water_committee_id: uuid.UUID | None = None
     clear_water_committee: bool = False
-    household_id: uuid.UUID | None = None
-    clear_household: bool = False
+    connection_id: uuid.UUID | None = None
+    clear_connection: bool = False
     partner_id: uuid.UUID | None = None
     assigned_community_ids: list[uuid.UUID] | None = None
 

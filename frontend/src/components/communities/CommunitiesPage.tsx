@@ -62,16 +62,16 @@ export default function CommunitiesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const [householdCounts, setHouseholdCounts] = useState<Record<string, number>>({})
+  const [connectionCounts, setConnectionCounts] = useState<Record<string, number>>({})
 
   function load() {
     setLoading(true)
     api.get('/water-committees/').then((r) => setCommittees(r.data)).catch(() => setCommittees([]))
-    api.get('/households/').then((r) => {
+    api.get('/connections/').then((r) => {
       const counts: Record<string, number> = {}
       for (const h of r.data) counts[h.community_id] = (counts[h.community_id] ?? 0) + 1
-      setHouseholdCounts(counts)
-    }).catch(() => setHouseholdCounts({}))
+      setConnectionCounts(counts)
+    }).catch(() => setConnectionCounts({}))
     api.get('/communities/')
       .then((r) => setCommunities(r.data))
       .catch(() => setCommunities([]))
@@ -142,7 +142,7 @@ export default function CommunitiesPage() {
           <EmptyState
             icon={MapPin}
             title="No communities yet"
-            hint="Add the first community with its tariff, then register households against it."
+            hint="Add the first community with its tariff, then register connections against it."
           />
         </Card>
       ) : (
@@ -172,8 +172,8 @@ export default function CommunitiesPage() {
               </div>
               <dl className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <dt className="text-gray-500 text-xs">Households</dt>
-                  <dd className="font-medium text-gray-900">{householdCounts[c.id] ?? 0}</dd>
+                  <dt className="text-gray-500 text-xs">Connections</dt>
+                  <dd className="font-medium text-gray-900">{connectionCounts[c.id] ?? 0}</dd>
                 </div>
                 <div>
                   <dt className="text-gray-500 text-xs">Water committee</dt>
@@ -188,7 +188,7 @@ export default function CommunitiesPage() {
       {showForm && (
         <Modal
           title="New community"
-          description="A community sits under a water committee. Tariffs are set afterwards under Tariffs and assigned per household."
+          description="A community sits under a water committee. Tariffs are set afterwards under Tariffs and assigned per connection."
           onClose={() => setShowForm(false)}
         >
           <form onSubmit={handleSubmit} className="space-y-4">

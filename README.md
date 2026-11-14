@@ -7,7 +7,7 @@ A digital open-source operating system for rural community-managed water systems
 ```
 backend/          FastAPI + PostgreSQL + SQLAlchemy
   app/
-    api/          REST endpoints (auth, communities, households, meters, billing, maintenance, dashboard, analytics)
+    api/          REST endpoints (auth, communities, connections, meters, billing, maintenance, dashboard, analytics)
     ai/           AI analytics module (payment risk, anomaly detection, maintenance prioritization)
     models/       SQLAlchemy ORM models
     schemas/      Pydantic request/response schemas
@@ -15,7 +15,7 @@ backend/          FastAPI + PostgreSQL + SQLAlchemy
     db/           Database session, bootstrap, migrations, optional local sample data
 frontend/         React + TypeScript + Tailwind CSS + Vite
   src/
-    components/   Dashboard, communities, households, meters, billing, maintenance, analytics pages
+    components/   Dashboard, communities, connections, meters, billing, maintenance, analytics pages
     contexts/     Auth context
     services/     API client (axios)
 ```
@@ -51,9 +51,9 @@ Sign in as `admin@example.com` / `admin123`, then create things top-down:
 1. **Partners** → the supporting organization
 2. **Water committees** → under the partner
 3. **Communities** → under the committee
-4. **Households** → by hand or **Import CSV** (`account_number, head_of_household` required;
+4. **Connections** → by hand or **Import CSV** (`account_number, contact_name` required;
    `meter_serial_number, meter_initial_reading, address, phone, members_count, notes` optional)
-5. **Tariffs** → a rising block tariff per committee; assign a special one to individual households if needed
+5. **Tariffs** → a rising block tariff per committee; assign a special one to individual connections if needed
 6. **Team** → accounts for the people who will use it (see roles below)
 
 ### Local test accounts
@@ -72,13 +72,13 @@ communities and these logins — **never run it against a production database**:
 |---|---|---|
 | System administrator | everything | any role |
 | Partner administrator | all committees its partner supports | partner admin and below |
-| Water committee administrator | its committee's communities, households, money | committee admin and below |
+| Water committee administrator | its committee's communities, connections, money | committee admin and below |
 | Treasurer | same committee; billing, payments, expenses | treasurer, operator, viewer |
 | Operator | only the communities ticked on their account; records readings, adds/replaces meters (web field mode or Flow Reader) | — |
-| Viewer (read-only) | a partner, a committee, some communities, or one household | — |
+| Viewer (read-only) | a partner, a committee, some communities, or one connection | — |
 
-A viewer attached to a **single household** is a community member: they see only that
-household's readings and bills.
+A viewer attached to a **single connection** is a community member: they see only that
+connection's readings and bills.
 
 ### Android (Flow Reader)
 Open `android/` in Android Studio, or run `./gradlew assembleDebug`. To point it at
@@ -111,7 +111,7 @@ The service is stateless apart from the database, so redeploys keep all data.
 | Module | Description |
 |--------|-------------|
 | **Communities** | Register and manage water systems across countries |
-| **Households** | Track connections, account status, outstanding balances |
+| **Connections** | Track connections, account status, outstanding balances |
 | **Meters** | Record readings, calculate consumption |
 | **Billing** | Generate invoices, record payments, track collection rates |
 | **Maintenance** | Log issues, prioritize by urgency, track resolution |
@@ -122,7 +122,7 @@ The service is stateless apart from the database, so redeploys keep all data.
 
 - 12 communities across Nicaragua, Ecuador, and Honduras
 - 4 local partners: FEDICAMP, ALTROPICO, AVODEC, ASOMAINCUPACO
-- ~2,000 household connections
+- ~2,000 connection connections
 - Configurable tariffs and multi-currency support (USD, NIO, HNL)
 
 ## API Documentation

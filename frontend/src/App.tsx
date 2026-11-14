@@ -9,8 +9,8 @@ const DashboardPage = lazy(() => import('./components/dashboard/DashboardPage'))
 const PartnersPage = lazy(() => import('./components/partners/PartnersPage'))
 const StructurePage = lazy(() => import('./components/structure/StructurePage'))
 const CommunitiesPage = lazy(() => import('./components/communities/CommunitiesPage'))
-const HouseholdsPage = lazy(() => import('./components/households/HouseholdsPage'))
-const HouseholdDetailPage = lazy(() => import('./components/households/HouseholdDetailPage'))
+const ConnectionsPage = lazy(() => import('./components/connections/ConnectionsPage'))
+const ConnectionDetailPage = lazy(() => import('./components/connections/ConnectionDetailPage'))
 const BillingPage = lazy(() => import('./components/billing/BillingPage'))
 const ExpensesPage = lazy(() => import('./components/expenses/ExpensesPage'))
 const MaintenancePage = lazy(() => import('./components/maintenance/MaintenancePage'))
@@ -67,8 +67,8 @@ export default function App() {
         <Route path="/partners" element={<PartnersPage />} />
         <Route path="/water-committees" element={<WaterCommitteesPage />} />
         <Route path="/communities" element={<CommunitiesPage />} />
-        <Route path="/households" element={<HouseholdsPage />} />
-        <Route path="/households/:householdId" element={<HouseholdDetailPage />} />
+        <Route path="/connections" element={<ConnectionsPage />} />
+        <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
         <Route path="/readings" element={<ReadingsPage />} />
         <Route path="/tariffs" element={<TariffsPage />} />
         <Route path="/billing" element={<BillingPage />} />

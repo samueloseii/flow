@@ -50,9 +50,9 @@ class User(Base):
     community_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("communities.id"), nullable=True
     )
-    # Community members: a viewer login limited to one household.
-    household_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("households.id"), nullable=True
+    # Community members: a viewer login limited to one connection.
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("connections.id"), nullable=True
     )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -70,7 +70,7 @@ class User(Base):
     water_committee: Mapped["WaterCommittee | None"] = relationship(  # noqa: F821
         back_populates="users"
     )
-    household: Mapped["Household | None"] = relationship()  # noqa: F821
+    connection: Mapped["Connection | None"] = relationship()  # noqa: F821
     assigned_communities: Mapped[list["Community"]] = relationship(  # noqa: F821
         secondary=operator_communities
     )

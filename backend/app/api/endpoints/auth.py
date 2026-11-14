@@ -16,7 +16,7 @@ from app.services.scope import (
     can_see_committee,
     can_see_community,
     forbid,
-    require_household,
+    require_connection,
     visible_committee_ids,
     visible_community_ids,
 )
@@ -44,7 +44,7 @@ def _user_response(user: User) -> UserResponse:
         partner_id=str(user.partner_id) if user.partner_id else None,
         water_committee_id=str(user.water_committee_id) if user.water_committee_id else None,
         community_id=str(user.community_id) if user.community_id else None,
-        household_id=str(user.household_id) if user.household_id else None,
+        connection_id=str(user.connection_id) if user.connection_id else None,
         assigned_community_ids=[str(c.id) for c in user.assigned_communities],
     )
 
@@ -182,12 +182,12 @@ def update_user(
         if not can_see_committee(db, current_user, payload.water_committee_id):
             raise forbid()
         user.water_committee_id = payload.water_committee_id
-    if payload.clear_household or user.role != UserRole.READER:
-        user.household_id = None
-    elif payload.household_id is not None:
-        household = require_household(db, current_user, payload.household_id)
-        user.household_id = household.id
-        user.community_id = household.community_id
+    if payload.clear_connection or user.role != UserRole.READER:
+        user.connection_id = None
+    elif payload.connection_id is not None:
+        connection = require_connection(db, current_user, payload.connection_id)
+        user.connection_id = connection.id
+        user.community_id = connection.community_id
     if payload.partner_id is not None and current_user.role == UserRole.SUPER_ADMIN:
         user.partner_id = payload.partner_id
     _apply_assignments(db, current_user, user, payload.assigned_community_ids)
@@ -267,10 +267,10 @@ def create_user(
     )
     water_committee_id = payload.water_committee_id or current_user.water_committee_id
     community_id = payload.community_id
-    household_id = payload.household_id if payload.role == UserRole.READER else None
-    if household_id:
-        household = require_household(db, current_user, household_id)
-        community_id = community_id or household.community_id
+    connection_id = payload.connection_id if payload.role == UserRole.READER else None
+    if connection_id:
+        connection = require_connection(db, current_user, connection_id)
+        community_id = community_id or connection.community_id
     if community_id is None and payload.role in (
         UserRole.OPERATOR,
         UserRole.READER,
@@ -292,7 +292,7 @@ def create_user(
         partner_id=partner_id,
         water_committee_id=water_committee_id,
         community_id=community_id,
-        household_id=household_id,
+        connection_id=connection_id,
     )
     db.add(user)
     db.flush()

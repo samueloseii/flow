@@ -18,10 +18,10 @@ import {
   secondaryButtonClass,
 } from '../ui'
 
-export interface Household {
+export interface Connection {
   id: string
   account_number: string
-  head_of_household: string
+  contact_name: string
   address: string | null
   phone: string | null
   members_count: number
@@ -43,7 +43,7 @@ interface Community {
 
 const emptyForm = {
   account_number: '',
-  head_of_household: '',
+  contact_name: '',
   address: '',
   phone: '',
   members_count: '1',
@@ -53,10 +53,10 @@ const emptyForm = {
   meter_initial_reading: '0',
 }
 
-export default function HouseholdsPage() {
+export default function ConnectionsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [households, setHouseholds] = useState<Household[]>([])
+  const [connections, setConnections] = useState<Connection[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -68,10 +68,10 @@ export default function HouseholdsPage() {
   async function load() {
     setLoading(true)
     try {
-      const res = await api.get('/households/', { params: { limit: 500 } })
-      setHouseholds(res.data)
+      const res = await api.get('/connections/', { params: { limit: 500 } })
+      setConnections(res.data)
     } catch {
-      setHouseholds([])
+      setConnections([])
     } finally {
       setLoading(false)
     }
@@ -85,15 +85,15 @@ export default function HouseholdsPage() {
       .catch(() => setCommunities([]))
   }, [])
 
-  async function handleDelete(household: Household) {
+  async function handleDelete(connection: Connection) {
     if (
       !window.confirm(
-        `Delete ${household.head_of_household} (${household.account_number}) and all its readings, bills and payments?`
+        `Delete ${connection.contact_name} (${connection.account_number}) and all its readings, bills and payments?`
       )
     )
       return
     try {
-      await api.delete(`/households/${household.id}`)
+      await api.delete(`/connections/${connection.id}`)
       load()
     } catch (err: any) {
       window.alert(err?.response?.data?.detail ?? 'Could not delete this account.')
@@ -111,9 +111,9 @@ export default function HouseholdsPage() {
     setSaving(true)
     setError('')
     try {
-      await api.post('/households/', {
+      await api.post('/connections/', {
         account_number: form.account_number.trim(),
-        head_of_household: form.head_of_household.trim(),
+        contact_name: form.contact_name.trim(),
         address: form.address.trim() || null,
         phone: form.phone.trim() || null,
         members_count: Number(form.members_count) || 1,
@@ -126,7 +126,7 @@ export default function HouseholdsPage() {
       await load()
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
-      setError(detail || 'Could not register the household. Check the details and try again.')
+      setError(detail || 'Could not register the connection. Check the details and try again.')
     } finally {
       setSaving(false)
     }
@@ -134,23 +134,23 @@ export default function HouseholdsPage() {
 
   const term = search.trim().toLowerCase()
   const filtered = term
-    ? households.filter(
+    ? connections.filter(
         (h) =>
-          h.head_of_household.toLowerCase().includes(term) ||
+          h.contact_name.toLowerCase().includes(term) ||
           h.account_number.toLowerCase().includes(term) ||
           (h.meter_serial_number || '').toLowerCase().includes(term),
       )
-    : households
+    : connections
 
   return (
     <div>
       <PageHeader
-        title="Households"
-        subtitle="Water accounts, one per household. Opened by the water committee administrator; readings follow the active meter."
+        title="Connections"
+        subtitle="Water accounts, one per connection. Opened by the water committee administrator; readings follow the active meter."
         actions={
           <button onClick={openForm} className={primaryButtonClass}>
             <Plus className="h-4 w-4" />
-            Register household
+            Register connection
           </button>
         }
       />
@@ -175,7 +175,7 @@ export default function HouseholdsPage() {
               <thead className="bg-gray-50">
                 <tr className="text-left text-xs font-medium uppercase text-gray-500">
                   <th className="px-6 py-3">Account</th>
-                  <th className="px-6 py-3">Head of household</th>
+                  <th className="px-6 py-3">Contact name</th>
                   <th className="px-6 py-3">Community</th>
                   <th className="px-6 py-3">Meter</th>
                   <th className="px-6 py-3">Last reading</th>
@@ -188,13 +188,13 @@ export default function HouseholdsPage() {
                 {filtered.map((h) => (
                   <tr
                     key={h.id}
-                    onClick={() => navigate(`/households/${h.id}`)}
+                    onClick={() => navigate(`/connections/${h.id}`)}
                     className="cursor-pointer hover:bg-primary-50/50 transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium text-primary-600">
                       {h.account_number}
                     </td>
-                    <td className="px-6 py-4 text-sm">{h.head_of_household}</td>
+                    <td className="px-6 py-4 text-sm">{h.contact_name}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{h.community_name || '—'}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {h.meter_serial_number || (h.has_meter ? 'Yes' : 'No meter')}
@@ -244,8 +244,8 @@ export default function HouseholdsPage() {
           {filtered.length === 0 && (
             <EmptyState
               icon={Home}
-              title="No households found"
-              hint="Register a household to start recording readings and bills."
+              title="No connections found"
+              hint="Register a connection to start recording readings and bills."
             />
           )}
         </Card>
@@ -253,7 +253,7 @@ export default function HouseholdsPage() {
 
       {showForm && (
         <Modal
-          title="Register household"
+          title="Register connection"
           description="Creates the water account and, optionally, its meter."
           onClose={() => setShowForm(false)}
         >
@@ -273,11 +273,11 @@ export default function HouseholdsPage() {
                   placeholder="C01-0042"
                 />
               </Field>
-              <Field label="Head of household">
+              <Field label="Contact name">
                 <input
                   required
-                  value={form.head_of_household}
-                  onChange={(e) => setForm({ ...form, head_of_household: e.target.value })}
+                  value={form.contact_name}
+                  onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
                   className={inputClass}
                   placeholder="María López"
                 />
@@ -361,7 +361,7 @@ export default function HouseholdsPage() {
                 Cancel
               </button>
               <button type="submit" disabled={saving} className={primaryButtonClass}>
-                {saving ? 'Saving...' : 'Register household'}
+                {saving ? 'Saving...' : 'Register connection'}
               </button>
             </div>
           </form>

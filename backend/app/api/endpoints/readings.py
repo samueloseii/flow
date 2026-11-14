@@ -1,4 +1,4 @@
-"""Raw meter readings across the hierarchy, and bulk household import."""
+"""Raw meter readings across the hierarchy, and bulk connection import."""
 
 import csv
 import io
@@ -13,10 +13,10 @@ from app.api.deps import ADMIN_ROLES, get_current_user, require_role
 from app.db.session import get_db
 from app.models.billing import Invoice
 from app.models.community import Community
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.meter import Meter, MeterReading, MeterStatus
 from app.models.user import User
-from app.services.scope import require_community, visible_community_ids, visible_household_ids
+from app.services.scope import require_community, visible_community_ids, visible_connection_ids
 
 router = APIRouter(prefix="/readings", tags=["readings"])
 
@@ -33,9 +33,9 @@ class RawReading(BaseModel):
     notes: str | None
     meter_id: uuid.UUID
     serial_number: str
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     account_number: str
-    head_of_household: str
+    contact_name: str
     community_id: uuid.UUID
     community_name: str
     water_committee_id: uuid.UUID | None
@@ -47,7 +47,7 @@ class RawReading(BaseModel):
 def list_raw_readings(
     water_committee_id: uuid.UUID | None = Query(None),
     community_id: uuid.UUID | None = Query(None),
-    household_id: uuid.UUID | None = Query(None),
+    connection_id: uuid.UUID | None = Query(None),
     meter_id: uuid.UUID | None = Query(None),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
@@ -60,24 +60,24 @@ def list_raw_readings(
 ):
     """Every reading the current login is allowed to see, newest first."""
     query = (
-        db.query(MeterReading, Meter, Household, Community, Invoice)
+        db.query(MeterReading, Meter, Connection, Community, Invoice)
         .join(Meter, Meter.id == MeterReading.meter_id)
-        .join(Household, Household.id == Meter.household_id)
-        .join(Community, Community.id == Household.community_id)
+        .join(Connection, Connection.id == Meter.connection_id)
+        .join(Community, Community.id == Connection.community_id)
         .outerjoin(Invoice, Invoice.id == MeterReading.invoice_id)
     )
     ids = visible_community_ids(db, current_user)
     if ids is not None:
-        query = query.filter(Household.community_id.in_(ids)) if ids else query.filter(False)
-    household_ids = visible_household_ids(db, current_user)
-    if household_ids is not None:
-        query = query.filter(Household.id.in_(household_ids))
+        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
+    connection_ids = visible_connection_ids(db, current_user)
+    if connection_ids is not None:
+        query = query.filter(Connection.id.in_(connection_ids))
     if water_committee_id:
         query = query.filter(Community.water_committee_id == water_committee_id)
     if community_id:
-        query = query.filter(Household.community_id == community_id)
-    if household_id:
-        query = query.filter(Household.id == household_id)
+        query = query.filter(Connection.community_id == community_id)
+    if connection_id:
+        query = query.filter(Connection.id == connection_id)
     if meter_id:
         query = query.filter(MeterReading.meter_id == meter_id)
     if date_from:
@@ -89,7 +89,7 @@ def list_raw_readings(
     if unbilled_only:
         query = query.filter(MeterReading.invoice_id.is_(None))
     rows = (
-        query.order_by(MeterReading.reading_date.desc(), Household.account_number)
+        query.order_by(MeterReading.reading_date.desc(), Connection.account_number)
         .offset(skip)
         .limit(limit)
         .all()
@@ -107,9 +107,9 @@ def list_raw_readings(
             notes=r.notes,
             meter_id=m.id,
             serial_number=m.serial_number,
-            household_id=h.id,
+            connection_id=h.id,
             account_number=h.account_number,
-            head_of_household=h.head_of_household,
+            contact_name=h.contact_name,
             community_id=c.id,
             community_name=c.name,
             water_committee_id=c.water_committee_id,
@@ -120,7 +120,7 @@ def list_raw_readings(
     ]
 
 
-REQUIRED_COLUMNS = ("account_number", "head_of_household")
+REQUIRED_COLUMNS = ("account_number", "contact_name")
 OPTIONAL_COLUMNS = (
     "address",
     "phone",
@@ -138,7 +138,7 @@ class ImportRowError(BaseModel):
 
 
 class ImportResult(BaseModel):
-    created_households: int
+    created_connections: int
     created_meters: int
     errors: list[ImportRowError]
 
@@ -148,20 +148,20 @@ def import_template(current_user: User = Depends(require_role(*ADMIN_ROLES))):
     return {
         "required_columns": list(REQUIRED_COLUMNS),
         "optional_columns": list(OPTIONAL_COLUMNS),
-        "example": "account_number,head_of_household,address,phone,members_count,"
+        "example": "account_number,contact_name,address,phone,members_count,"
         "meter_serial_number,meter_brand,meter_initial_reading,notes\n"
         "A-001,Mary Johnson,12 Cedar St,(505) 555-0101,4,MTR-1001,Elster,1250,\n",
     }
 
 
 @router.post("/import", response_model=ImportResult)
-async def import_households(
+async def import_connections(
     community_id: uuid.UUID = Query(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
-    """Load households (and their meters) for one community from a CSV file.
+    """Load connections (and their meters) for one community from a CSV file.
 
     The whole file is checked first; nothing is saved if any row has a problem.
     """
@@ -182,20 +182,20 @@ async def import_households(
         )
 
     errors: list[ImportRowError] = []
-    pending: list[tuple[Household, Meter | None]] = []
+    pending: list[tuple[Connection, Meter | None]] = []
     seen_accounts: set[str] = set()
     seen_serials: set[str] = set()
-    existing_accounts = {a for (a,) in db.query(Household.account_number).all()}
+    existing_accounts = {a for (a,) in db.query(Connection.account_number).all()}
     existing_serials = {s for (s,) in db.query(Meter.serial_number).all()}
 
     for index, row in enumerate(reader, start=2):
         data = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
         account = data.get("account_number", "")
-        name = data.get("head_of_household", "")
+        name = data.get("contact_name", "")
         if not account or not name:
             errors.append(
                 ImportRowError(
-                    row=index, message="account_number and head_of_household are required"
+                    row=index, message="account_number and contact_name are required"
                 )
             )
             continue
@@ -216,9 +216,9 @@ async def import_households(
                 )
             )
             continue
-        household = Household(
+        connection = Connection(
             account_number=account,
-            head_of_household=name,
+            contact_name=name,
             address=data.get("address") or None,
             phone=data.get("phone") or None,
             members_count=members,
@@ -238,18 +238,18 @@ async def import_households(
         seen_accounts.add(account)
         if serial:
             seen_serials.add(serial)
-        pending.append((household, meter))
+        pending.append((connection, meter))
 
     if errors:
-        return ImportResult(created_households=0, created_meters=0, errors=errors)
+        return ImportResult(created_connections=0, created_meters=0, errors=errors)
 
     meters = 0
-    for household, meter in pending:
-        db.add(household)
+    for connection, meter in pending:
+        db.add(connection)
         db.flush()
         if meter:
-            meter.household_id = household.id
+            meter.connection_id = connection.id
             db.add(meter)
             meters += 1
     db.commit()
-    return ImportResult(created_households=len(pending), created_meters=meters, errors=[])
+    return ImportResult(created_connections=len(pending), created_meters=meters, errors=[])

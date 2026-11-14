@@ -37,15 +37,15 @@ class Meter(Base):
     )
     avg_consumption_m3: Mapped[float] = mapped_column(Float, default=0.0)
 
-    household_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("households.id")
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("connections.id")
     )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    household: Mapped["Household"] = relationship(back_populates="meters")  # noqa: F821
+    connection: Mapped["Connection"] = relationship(back_populates="meters")  # noqa: F821
     readings: Mapped[list["MeterReading"]] = relationship(
         back_populates="meter", order_by="desc(MeterReading.reading_date)"
     )

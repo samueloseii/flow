@@ -1,4 +1,4 @@
-"""Partner > water committee > community > household > meter, with scoped logins and block tariffs."""
+"""Partner > water committee > community > connection > meter, with scoped logins and block tariffs."""
 
 import io
 import uuid
@@ -115,11 +115,11 @@ def test_hierarchy_scoping_and_roles(client, auth):
     )
     assert r.status_code == 403
 
-    # households in both communities; operator's reading context spans both
+    # connections in both communities; operator's reading context spans both
     for comm, acct, serial in ((comm_a, "H-A1", "M-A1"), (comm_b, "H-B1", "M-B1"), (comm_other, "H-O1", "M-O1")):
         r = client.post(
-            f"{API}/households/",
-            json={"account_number": acct, "head_of_household": acct, "community_id": comm["id"],
+            f"{API}/connections/",
+            json={"account_number": acct, "contact_name": acct, "community_id": comm["id"],
                   "meter_serial_number": serial, "meter_initial_reading": 100},
             headers=auth,
         )
@@ -128,7 +128,7 @@ def test_hierarchy_scoping_and_roles(client, auth):
     ctx = client.get(f"{API}/meters/reading-context", headers=op).json()
     assert {c["account_number"] for c in ctx} == {"H-A1", "H-B1"}
     assert ctx[0]["days_since_last_reading"] is None or ctx[0]["days_since_last_reading"] >= 0
-    assert client.get(f"{API}/households/", headers=wc).json().__len__() == 2
+    assert client.get(f"{API}/connections/", headers=wc).json().__len__() == 2
 
 
 def test_block_tariff_and_billing_traceability(client, auth):
@@ -167,14 +167,14 @@ def test_block_tariff_and_billing_traceability(client, auth):
     assert r.json()["fixed_charge"] == 3.5
 
     std_hh = client.post(
-        f"{API}/households/",
-        json={"account_number": "T-1", "head_of_household": "Std", "community_id": comm_a["id"],
+        f"{API}/connections/",
+        json={"account_number": "T-1", "contact_name": "Std", "community_id": comm_a["id"],
               "meter_serial_number": "T-M1", "meter_initial_reading": 0},
         headers=auth,
     ).json()
     red_hh = client.post(
-        f"{API}/households/",
-        json={"account_number": "T-2", "head_of_household": "Elderly", "community_id": comm_a["id"],
+        f"{API}/connections/",
+        json={"account_number": "T-2", "contact_name": "Elderly", "community_id": comm_a["id"],
               "meter_serial_number": "T-M2", "meter_initial_reading": 0, "tariff_id": reduced["id"]},
         headers=auth,
     ).json()
@@ -183,7 +183,7 @@ def test_block_tariff_and_billing_traceability(client, auth):
     now = datetime.now(timezone.utc)
     start, end = now - timedelta(days=30), now + timedelta(days=1)
     for hh, serial, value in ((std_hh, "T-M1", 25), (red_hh, "T-M2", 25)):
-        meter = client.get(f"{API}/meters/", params={"household_id": hh["id"]}, headers=auth).json()[0]
+        meter = client.get(f"{API}/meters/", params={"connection_id": hh["id"]}, headers=auth).json()[0]
         r = client.post(
             f"{API}/meters/readings",
             json={"meter_id": meter["id"], "reading_value": value, "reading_date": now.isoformat()},
@@ -207,7 +207,7 @@ def test_block_tariff_and_billing_traceability(client, auth):
     assert bill["tariff_name"] == "Standard"
     assert len(bill["readings"]) == 1 and bill["readings"][0]["reading_value"] == 25
 
-    raw = client.get(f"{API}/readings/", params={"household_id": std_hh["id"]}, headers=auth).json()
+    raw = client.get(f"{API}/readings/", params={"connection_id": std_hh["id"]}, headers=auth).json()
     assert raw[0]["invoice_number"] == invoices["T-1"]["invoice_number"]
     # a billed reading cannot be deleted; readings are not billed twice
     assert client.delete(f"{API}/meters/readings/{raw[0]['id']}", headers=auth).status_code == 409
@@ -226,21 +226,21 @@ def test_block_tariff_and_billing_traceability(client, auth):
 def test_meter_replacement_and_csv_import(client, auth):
     partner, committee, comm_a, *_ = _setup(client, auth)
     hh = client.post(
-        f"{API}/households/",
-        json={"account_number": "R-1", "head_of_household": "Replace", "community_id": comm_a["id"],
+        f"{API}/connections/",
+        json={"account_number": "R-1", "contact_name": "Replace", "community_id": comm_a["id"],
               "meter_serial_number": "OLD-1", "meter_initial_reading": 500},
         headers=auth,
     ).json()
-    old = client.get(f"{API}/meters/", params={"household_id": hh["id"]}, headers=auth).json()[0]
+    old = client.get(f"{API}/meters/", params={"connection_id": hh["id"]}, headers=auth).json()[0]
     r = client.post(
         f"{API}/meters/",
-        json={"serial_number": "NEW-1", "household_id": hh["id"], "initial_reading": 0,
+        json={"serial_number": "NEW-1", "connection_id": hh["id"], "initial_reading": 0,
               "final_reading_of_old_meter": 520},
         headers=auth,
     )
     assert r.status_code == 201, r.text
     new = r.json()
-    meters = {m["serial_number"]: m for m in client.get(f"{API}/meters/", params={"household_id": hh["id"]}, headers=auth).json()}
+    meters = {m["serial_number"]: m for m in client.get(f"{API}/meters/", params={"connection_id": hh["id"]}, headers=auth).json()}
     assert meters["OLD-1"]["status"] == "replaced" and meters["OLD-1"]["last_reading_value"] == 520
     assert meters["NEW-1"]["status"] == "active"
     # readings go to the new meter only
@@ -252,23 +252,23 @@ def test_meter_replacement_and_csv_import(client, auth):
     assert r.status_code == 409
     ctx = [c for c in client.get(f"{API}/meters/reading-context", params={"community_id": comm_a["id"]}, headers=auth).json() if c["account_number"] == "R-1"]
     assert ctx[0]["meter_id"] == new["id"] and ctx[0]["last_reading_value"] == 0
-    detail = client.get(f"{API}/households/{hh['id']}/detail", headers=auth).json()
+    detail = client.get(f"{API}/connections/{hh['id']}/detail", headers=auth).json()
     assert len(detail["meters"]) == 2 and len(detail["readings"]) == 1
 
     # CSV import: all-or-nothing
-    bad = "account_number,head_of_household,meter_serial_number\nC-1,Ann,CSV-1\nR-1,Dup,CSV-2\n"
+    bad = "account_number,contact_name,meter_serial_number\nC-1,Ann,CSV-1\nR-1,Dup,CSV-2\n"
     r = client.post(
         f"{API}/readings/import", params={"community_id": comm_a["id"]},
         files={"file": ("h.csv", io.BytesIO(bad.encode()), "text/csv")}, headers=auth,
     )
-    assert r.status_code == 200 and r.json()["created_households"] == 0
+    assert r.status_code == 200 and r.json()["created_connections"] == 0
     assert r.json()["errors"][0]["row"] == 3
-    good = "account_number,head_of_household,meter_serial_number,meter_initial_reading\nC-1,Ann,CSV-1,10\nC-2,Bob,,\n"
+    good = "account_number,contact_name,meter_serial_number,meter_initial_reading\nC-1,Ann,CSV-1,10\nC-2,Bob,,\n"
     r = client.post(
         f"{API}/readings/import", params={"community_id": comm_a["id"]},
         files={"file": ("h.csv", io.BytesIO(good.encode()), "text/csv")}, headers=auth,
     )
-    assert r.json() == {"created_households": 2, "created_meters": 1, "errors": []}
+    assert r.json() == {"created_connections": 2, "created_meters": 1, "errors": []}
     r = client.post(
         f"{API}/readings/import", params={"community_id": comm_a["id"]},
         files={"file": ("h.csv", io.BytesIO(b"name\nx\n"), "text/csv")}, headers=auth,
@@ -300,18 +300,18 @@ def test_organization_level_and_structure_tree(client, auth):
         json={"name": "Tree Community", "country": "US", "water_committee_id": committee["id"]},
         headers=auth,
     ).json()
-    household = client.post(
-        f"{API}/households/",
-        json={"account_number": f"T-{uuid.uuid4().hex[:5]}", "head_of_household": "Tree Family",
+    connection = client.post(
+        f"{API}/connections/",
+        json={"account_number": f"T-{uuid.uuid4().hex[:5]}", "contact_name": "Tree Family",
               "community_id": community["id"], "meter_serial_number": f"TM-{uuid.uuid4().hex[:6]}"},
         headers=auth,
     )
-    assert household.status_code == 201, household.text
-    household = household.json()
+    assert connection.status_code == 201, connection.text
+    connection = connection.json()
     new_serial = f"TM-{uuid.uuid4().hex[:6]}"
     r = client.post(
         f"{API}/meters/",
-        json={"serial_number": new_serial, "household_id": household["id"], "retire_existing_as": "removed"},
+        json={"serial_number": new_serial, "connection_id": connection["id"], "retire_existing_as": "removed"},
         headers=auth,
     )
     assert r.status_code == 201, r.text
@@ -322,8 +322,8 @@ def test_organization_level_and_structure_tree(client, auth):
     partner_node = next(n for n in org_node["children"] if n["id"] == partner["id"])
     committee_node = next(n for n in partner_node["children"] if n["id"] == committee["id"])
     community_node = next(n for n in committee_node["children"] if n["id"] == community["id"])
-    household_node = next(n for n in community_node["children"] if n["id"] == household["id"])
-    statuses = {m["name"]: m["status"] for m in household_node["children"]}
+    connection_node = next(n for n in community_node["children"] if n["id"] == connection["id"])
+    statuses = {m["name"]: m["status"] for m in connection_node["children"]}
     assert statuses[new_serial] == "active"
     assert "removed" in statuses.values() and len(statuses) == 2
 

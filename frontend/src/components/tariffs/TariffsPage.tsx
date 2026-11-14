@@ -16,7 +16,7 @@ interface Tariff {
   rates: number[]
   is_default: boolean
   water_committee_id: string
-  household_count: number
+  connection_count: number
 }
 
 interface Committee { id: string; name: string }
@@ -143,24 +143,24 @@ export default function TariffsPage() {
     <div>
       <PageHeader
         title="Tariffs"
-        subtitle="Rising block tariffs set by each water committee. Assign a tariff to a household from its page; the committee's default applies otherwise."
+        subtitle="Rising block tariffs set by each water committee. Assign a tariff to a connection from its page; the committee's default applies otherwise."
         actions={<button onClick={openNew} className={primaryButtonClass} disabled={committees.length === 0}><Plus className="h-4 w-4" />New tariff</button>}
       />
       {loading ? <Spinner /> : committees.length === 0 ? (
         <EmptyState icon={Calculator} title="Add a water committee first" hint="Tariffs belong to a water committee." />
       ) : tariffs.length === 0 ? (
-        <EmptyState icon={Calculator} title="No tariffs yet" hint="Create a standard tariff, and a reduced one for households that need it." />
+        <EmptyState icon={Calculator} title="No tariffs yet" hint="Create a standard tariff, and a reduced one for connections that need it." />
       ) : (
         <Card className="p-0 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500"><tr><th className="px-5 py-3">Tariff</th><th className="px-5 py-3">Committee</th><th className="px-5 py-3">Structure</th><th className="px-5 py-3 text-right">Households</th><th className="px-5 py-3"></th></tr></thead>
+            <thead className="bg-gray-50 text-left text-xs text-gray-500"><tr><th className="px-5 py-3">Tariff</th><th className="px-5 py-3">Committee</th><th className="px-5 py-3">Structure</th><th className="px-5 py-3 text-right">Connections</th><th className="px-5 py-3"></th></tr></thead>
             <tbody className="divide-y divide-gray-100">
               {tariffs.map((t) => (
                 <tr key={t.id}>
                   <td className="px-5 py-3"><div className="flex items-center gap-2 font-medium text-gray-900">{t.name}{t.is_default && <Badge value="default" className="bg-primary-50 text-primary-700" />}</div>{t.description && <p className="text-xs text-gray-500">{t.description}</p>}</td>
                   <td className="px-5 py-3 text-gray-600">{committeeName(t.water_committee_id)}</td>
                   <td className="px-5 py-3 text-gray-600 text-xs">{describe(t)}</td>
-                  <td className="px-5 py-3 text-right text-gray-600">{t.household_count}</td>
+                  <td className="px-5 py-3 text-right text-gray-600">{t.connection_count}</td>
                   <td className="px-5 py-3 text-right whitespace-nowrap">
                     <button onClick={() => openEdit(t)} className="text-gray-400 hover:text-primary-600 mr-3" title="Edit"><Pencil className="h-4 w-4" /></button>
                     <button onClick={() => remove(t)} className="text-gray-400 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
@@ -186,7 +186,7 @@ export default function TariffsPage() {
               <Field label="Base charge" hint="Charged every bill; covers the first block"><input type="number" step="0.01" min="0" className={inputClass} value={form.base_rate} onChange={(e) => setForm({ ...form, base_rate: e.target.value })} required /></Field>
               <Field label="Currency"><input className={inputClass} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} /></Field>
             </div>
-            <Field label="Description" hint="e.g. Reduced rate for elderly households"><input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+            <Field label="Description" hint="e.g. Reduced rate for elderly connections"><input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">Blocks</p>
               <div className="space-y-2">
@@ -206,10 +206,10 @@ export default function TariffsPage() {
               </div>
               <button type="button" className="mt-2 text-xs text-primary-600 hover:underline" onClick={() => { const blocks = [...form.blocks]; blocks.splice(blocks.length - 1, 0, { upTo: '', rate: '' }); setForm({ ...form, blocks }) }}>+ Add a block</button>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />Default tariff for households in this committee without their own</label>
+            <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />Default tariff for connections in this committee without their own</label>
             <div className="rounded-lg bg-gray-50 p-3 text-sm flex items-center gap-3">
               <Calculator className="h-4 w-4 text-gray-400" />
-              <span>A household using</span>
+              <span>A connection using</span>
               <input type="number" min="0" className={`${inputClass} w-20`} value={sample} onChange={(e) => setSample(e.target.value)} />
               <span>m³ would pay <strong>{preview === null ? '—' : formatMoney(form.currency, preview)}</strong></span>
             </div>

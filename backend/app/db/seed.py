@@ -16,7 +16,7 @@ from app.db.base import Base
 from app.models.billing import Invoice, InvoiceStatus, Payment, PaymentMethod
 from app.models.community import Community, CommunitySize, WaterSystemType
 from app.models.expense import Expense, ExpenseCategory
-from app.models.household import Household, HouseholdStatus
+from app.models.connection import Connection, ConnectionStatus
 from app.models.maintenance import (
     MaintenanceCategory,
     MaintenancePriority,
@@ -130,7 +130,7 @@ def _seed_data(db: Session):
         db.add(tr)
     db.flush()
 
-    # Households, meters, readings, invoices, payments for first 3 communities (demo)
+    # Connections, meters, readings, invoices, payments for first 3 communities (demo)
     now = datetime.now(timezone.utc)
     names_pool = [
         "García", "Rodríguez", "López", "Hernández", "Martínez", "Pérez",
@@ -141,16 +141,16 @@ def _seed_data(db: Session):
     first_names = ["Juan", "María", "Pedro", "Ana", "José", "Rosa", "Carlos", "Elena", "Luis", "Carmen"]
 
     for ci, community in enumerate(communities[:6]):
-        num_households = min(community.total_connections, 20)
-        for hi in range(num_households):
+        num_connections = min(community.total_connections, 20)
+        for hi in range(num_connections):
             fname = random.choice(first_names)
             lname = random.choice(names_pool)
-            hh = Household(
+            hh = Connection(
                 account_number=f"C{ci+1:02d}-{hi+1:04d}",
-                head_of_household=f"{fname} {lname}",
+                contact_name=f"{fname} {lname}",
                 members_count=random.randint(2, 8),
                 status=random.choices(
-                    [HouseholdStatus.ACTIVE, HouseholdStatus.ACTIVE, HouseholdStatus.ACTIVE, HouseholdStatus.SUSPENDED],
+                    [ConnectionStatus.ACTIVE, ConnectionStatus.ACTIVE, ConnectionStatus.ACTIVE, ConnectionStatus.SUSPENDED],
                     weights=[7, 7, 7, 1],
                 )[0],
                 has_meter=True,
@@ -164,7 +164,7 @@ def _seed_data(db: Session):
                 serial_number=f"M-C{ci+1:02d}-{hi+1:04d}",
                 brand="Zenner" if hi % 2 == 0 else "Itron",
                 install_date=now - timedelta(days=random.randint(60, 365)),
-                household_id=hh.id,
+                connection_id=hh.id,
             )
             db.add(meter)
             db.flush()
@@ -177,14 +177,14 @@ def _seed_data(db: Session):
             for month_offset in range(12, 0, -1):
                 consumption = max(0.0, random.gauss(baseline, baseline * 0.18))
                 flag_reason = None
-                # A few households show a leak-like spike the admin should notice.
+                # A few connections show a leak-like spike the admin should notice.
                 if month_offset <= 2 and hi % 7 == 0:
                     consumption = baseline * random.uniform(1.8, 3.0)
                     average = sum(recent[-6:]) / len(recent[-6:]) if recent else 0.0
                     pct = round((consumption / average - 1) * 100) if average else 0
                     flag_reason = (
                         f"Consumption {consumption:.1f} m³ is {pct}% above this "
-                        f"household's average of {average:.1f} m³ — possible leak or misread."
+                        f"connection's average of {average:.1f} m³ — possible leak or misread."
                     )
                 prev = cumulative
                 cumulative += consumption
@@ -223,7 +223,7 @@ def _seed_data(db: Session):
                     total_amount=round(total, 2),
                     currency=community.currency,
                     due_date=period_end + timedelta(days=15),
-                    household_id=hh.id,
+                    connection_id=hh.id,
                 )
 
                 # Simulate payment status
@@ -250,7 +250,7 @@ def _seed_data(db: Session):
                         currency=community.currency,
                         payment_method=random.choice([PaymentMethod.CASH, PaymentMethod.CASH, PaymentMethod.BANK_TRANSFER]),
                         payment_date=period_end + timedelta(days=random.randint(1, 14)),
-                        household_id=hh.id,
+                        connection_id=hh.id,
                         invoice_id=inv.id,
                     )
                     db.add(pmt)
@@ -258,7 +258,7 @@ def _seed_data(db: Session):
             # Update outstanding balance
             outstanding = (
                 db.query(Invoice)
-                .filter(Invoice.household_id == hh.id, Invoice.balance_due > 0)
+                .filter(Invoice.connection_id == hh.id, Invoice.balance_due > 0)
                 .all()
             )
             hh.outstanding_balance = round(sum(i.balance_due for i in outstanding), 2)
@@ -318,7 +318,7 @@ def _seed_data(db: Session):
             ))
 
     db.commit()
-    print(f"Seeded: {len(partners)} partners, {len(communities)} communities, demo households/billing/maintenance/expenses")
+    print(f"Seeded: {len(partners)} partners, {len(communities)} communities, demo connections/billing/maintenance/expenses")
 
 
 if __name__ == "__main__":

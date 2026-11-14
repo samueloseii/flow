@@ -2,8 +2,8 @@ from pydantic import BaseModel
 
 
 class CommunityDashboard(BaseModel):
-    total_households: int
-    active_households: int
+    total_connections: int
+    active_connections: int
     total_meters: int
     collection_rate: float
     total_revenue: float
@@ -14,7 +14,7 @@ class CommunityDashboard(BaseModel):
 
 class PartnerDashboard(BaseModel):
     total_communities: int
-    total_households: int
+    total_connections: int
     overall_collection_rate: float
     total_revenue: float
     total_arrears: float
@@ -25,7 +25,7 @@ class PartnerDashboard(BaseModel):
 class SystemDashboard(BaseModel):
     total_partners: int
     total_communities: int
-    total_households: int
+    total_connections: int
     total_users: int
     overall_collection_rate: float
     total_revenue: float

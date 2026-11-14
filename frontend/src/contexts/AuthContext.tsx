@@ -8,7 +8,7 @@ export interface UserInfo {
   role: string
   partner_id: string | null
   water_committee_id?: string | null
-  household_id?: string | null
+  connection_id?: string | null
   community_id: string | null
 }
 

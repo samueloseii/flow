@@ -31,7 +31,7 @@ export interface OfflineReading {
 
 export interface OfflinePayment {
   client_id: string
-  household_id: string
+  connection_id: string
   invoice_id?: string | null
   amount: number
   currency: string

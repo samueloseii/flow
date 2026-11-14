@@ -1,7 +1,7 @@
 """Prepare a production database: create tables and the first administrator.
 
 No sample data is created. Everything else — organizations, communities,
-households, users — is entered by the administrator inside the app.
+connections, users — is entered by the administrator inside the app.
 """
 
 import os

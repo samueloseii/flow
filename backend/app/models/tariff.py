@@ -44,7 +44,7 @@ class Tariff(Base):
     )
 
     water_committee: Mapped["WaterCommittee"] = relationship(back_populates="tariffs")  # noqa: F821
-    households: Mapped[list["Household"]] = relationship(back_populates="tariff")  # noqa: F821
+    connections: Mapped[list["Connection"]] = relationship(back_populates="tariff")  # noqa: F821
 
     def charge_for(self, consumption_m3: float) -> tuple[float, float, list[dict]]:
         """Return (fixed, variable, blocks) for a consumption figure."""

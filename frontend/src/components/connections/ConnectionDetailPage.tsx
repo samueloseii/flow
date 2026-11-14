@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import api from '../../services/api'
-import { Household } from './HouseholdsPage'
+import { Connection } from './ConnectionsPage'
 import {
   Badge,
   Card,
@@ -87,7 +87,7 @@ interface Tariff {
 }
 
 interface Detail {
-  household: Household
+  connection: Connection
   consumption_history: ConsumptionPoint[]
   invoices: Invoice[]
   payments: Payment[]
@@ -98,8 +98,8 @@ interface Detail {
   meters: Meter[]
 }
 
-export default function HouseholdDetailPage() {
-  const { householdId } = useParams()
+export default function ConnectionDetailPage() {
+  const { connectionId } = useParams()
   const navigate = useNavigate()
   const [detail, setDetail] = useState<Detail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -114,10 +114,10 @@ export default function HouseholdDetailPage() {
   }, [])
 
   async function assignTariff(tariffId: string) {
-    if (!householdId) return
+    if (!connectionId) return
     try {
-      await api.patch(`/households/${householdId}`, tariffId ? { tariff_id: tariffId } : { clear_tariff: true })
-      const r = await api.get(`/households/${householdId}/detail`)
+      await api.patch(`/connections/${connectionId}`, tariffId ? { tariff_id: tariffId } : { clear_tariff: true })
+      const r = await api.get(`/connections/${connectionId}/detail`)
       setDetail(r.data)
     } catch (err: any) {
       window.alert(err?.response?.data?.detail ?? 'Could not change the tariff.')
@@ -126,12 +126,12 @@ export default function HouseholdDetailPage() {
 
   async function submitMeter(e: FormEvent) {
     e.preventDefault()
-    if (!householdId) return
+    if (!connectionId) return
     setSavingMeter(true)
     setMeterError('')
     try {
       await api.post('/meters/', {
-        household_id: householdId,
+        connection_id: connectionId,
         serial_number: meterForm.serial_number,
         brand: meterForm.brand || null,
         initial_reading: Number(meterForm.initial_reading || 0),
@@ -139,7 +139,7 @@ export default function HouseholdDetailPage() {
         final_reading_of_old_meter: meterForm.final_reading_of_old_meter ? Number(meterForm.final_reading_of_old_meter) : null,
       })
       setShowMeterForm(false)
-      const r = await api.get(`/households/${householdId}/detail`)
+      const r = await api.get(`/connections/${connectionId}/detail`)
       setDetail(r.data)
     } catch (err: any) {
       setMeterError(err?.response?.data?.detail ?? 'Could not add the meter.')
@@ -149,13 +149,13 @@ export default function HouseholdDetailPage() {
   }
 
   useEffect(() => {
-    if (!householdId) return
+    if (!connectionId) return
     api
-      .get(`/households/${householdId}/detail`, { params: { months: 12 } })
+      .get(`/connections/${connectionId}/detail`, { params: { months: 12 } })
       .then((res) => setDetail(res.data))
       .catch(() => setDetail(null))
       .finally(() => setLoading(false))
-  }, [householdId])
+  }, [connectionId])
 
   if (loading) return <Spinner />
 
@@ -163,34 +163,34 @@ export default function HouseholdDetailPage() {
     return (
       <div>
         <button
-          onClick={() => navigate('/households')}
+          onClick={() => navigate('/connections')}
           className="flex items-center gap-2 text-sm text-primary-600 mb-6"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to households
+          <ArrowLeft className="h-4 w-4" /> Back to connections
         </button>
-        <EmptyState icon={Receipt} title="Household not found" />
+        <EmptyState icon={Receipt} title="Connection not found" />
       </div>
     )
   }
 
-  const { household } = detail
-  const currency = household.currency
+  const { connection } = detail
+  const currency = connection.currency
 
   return (
     <div>
       <button
-        onClick={() => navigate('/households')}
+        onClick={() => navigate('/connections')}
         className="flex items-center gap-2 text-sm text-primary-600 mb-4"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to households
+        <ArrowLeft className="h-4 w-4" /> Back to connections
       </button>
 
       <PageHeader
-        title={household.head_of_household}
-        subtitle={`${household.account_number} · ${household.community_name || 'Community'} · meter ${
-          household.meter_serial_number || 'not installed'
+        title={connection.contact_name}
+        subtitle={`${connection.account_number} · ${connection.community_name || 'Community'} · meter ${
+          connection.meter_serial_number || 'not installed'
         }`}
-        actions={<Badge value={household.status} />}
+        actions={<Badge value={connection.status} />}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
@@ -208,11 +208,11 @@ export default function HouseholdDetailPage() {
         <StatCard
           label="Last reading"
           value={
-            household.last_reading_value != null
-              ? `${household.last_reading_value.toFixed(1)} m³`
+            connection.last_reading_value != null
+              ? `${connection.last_reading_value.toFixed(1)} m³`
               : '—'
           }
-          hint={formatDate(household.last_reading_date)}
+          hint={formatDate(connection.last_reading_date)}
         />
       </div>
 
@@ -334,11 +334,11 @@ export default function HouseholdDetailPage() {
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Tariff</h2>
-            <p className="text-xs text-gray-500">Bills for this household use this tariff; otherwise the committee's default.</p>
+            <p className="text-xs text-gray-500">Bills for this connection use this tariff; otherwise the committee's default.</p>
           </div>
           <select
             className={`${inputClass} w-64`}
-            value={(detail.household as { tariff_id?: string | null }).tariff_id ?? ''}
+            value={(detail.connection as { tariff_id?: string | null }).tariff_id ?? ''}
             onChange={(e) => assignTariff(e.target.value)}
           >
             <option value="">Committee default</option>

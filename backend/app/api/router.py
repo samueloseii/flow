@@ -9,7 +9,7 @@ from app.api.endpoints import (
     communities,
     dashboard,
     expenses,
-    households,
+    connections,
     maintenance,
     meters,
     partners,
@@ -25,7 +25,7 @@ api_router.include_router(organizations.router)
 api_router.include_router(partners.router)
 api_router.include_router(structure.router)
 api_router.include_router(communities.router)
-api_router.include_router(households.router)
+api_router.include_router(connections.router)
 api_router.include_router(meters.router)
 api_router.include_router(billing.router)
 api_router.include_router(maintenance.router)

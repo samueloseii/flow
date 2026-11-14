@@ -11,7 +11,7 @@ class MeterCreate(BaseModel):
     brand: str | None = None
     model: str | None = None
     install_date: datetime | None = None
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     initial_reading: float = 0.0
     # When replacing: what to do with the meter being taken out.
     retire_existing_as: MeterStatus | None = None
@@ -38,7 +38,7 @@ class MeterResponse(BaseModel):
     last_reading_value: float
     last_reading_date: datetime | None
     avg_consumption_m3: float
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     created_at: datetime
 
     class Config:
@@ -67,9 +67,9 @@ class MeterReadingResponse(BaseModel):
 class ReadingContext(BaseModel):
     """A meter an operator may read, plus the context needed to sanity-check it."""
 
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     account_number: str
-    head_of_household: str
+    contact_name: str
     address: str | None
     community_id: uuid.UUID
     meter_id: uuid.UUID

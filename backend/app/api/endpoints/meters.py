@@ -6,11 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import ADMIN_ROLES, READING_ROLES, get_current_user, require_role
 from app.db.session import get_db
-from app.models.household import Household, HouseholdStatus
+from app.models.connection import Connection, ConnectionStatus
 from app.models.meter import Meter, MeterReading, MeterStatus
 from app.models.community import Community
 from app.models.user import User
-from app.services.scope import require_household, visible_community_ids
+from app.services.scope import require_connection, visible_community_ids
 from app.schemas.meter import (
     MeterCreate,
     MeterReadingCreate,
@@ -25,18 +25,18 @@ router = APIRouter(prefix="/meters", tags=["meters"])
 
 @router.get("/", response_model=list[MeterResponse])
 def list_meters(
-    household_id: uuid.UUID | None = Query(None),
+    connection_id: uuid.UUID | None = Query(None),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Meter).join(Household, Household.id == Meter.household_id)
+    query = db.query(Meter).join(Connection, Connection.id == Meter.connection_id)
     ids = visible_community_ids(db, current_user)
     if ids is not None:
-        query = query.filter(Household.community_id.in_(ids)) if ids else query.filter(False)
-    if household_id:
-        query = query.filter(Meter.household_id == household_id)
+        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
+    if connection_id:
+        query = query.filter(Meter.connection_id == connection_id)
     return query.order_by(Meter.created_at.desc()).offset(skip).limit(limit).all()
 
 
@@ -48,30 +48,30 @@ def reading_context(
 ):
     """Everything the field app needs to read meters, cacheable for offline use."""
     query = (
-        db.query(Household, Meter, Community)
-        .join(Meter, Meter.household_id == Household.id)
-        .join(Community, Community.id == Household.community_id)
-        .filter(Household.status == HouseholdStatus.ACTIVE)
+        db.query(Connection, Meter, Community)
+        .join(Meter, Meter.connection_id == Connection.id)
+        .join(Community, Community.id == Connection.community_id)
+        .filter(Connection.status == ConnectionStatus.ACTIVE)
         .filter(Meter.status == MeterStatus.ACTIVE)
     )
     ids = visible_community_ids(db, current_user)
     if ids is not None:
-        query = query.filter(Household.community_id.in_(ids)) if ids else query.filter(False)
+        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
     if community_id:
-        query = query.filter(Household.community_id == community_id)
+        query = query.filter(Connection.community_id == community_id)
 
-    rows = query.order_by(Community.name, Household.account_number).all()
+    rows = query.order_by(Community.name, Connection.account_number).all()
     now = datetime.now(timezone.utc)
     results = []
-    for household, meter, community in rows:
+    for connection, meter, community in rows:
         daily, days, expected = expected_consumption(db, meter, now)
         results.append(
             ReadingContext(
-                household_id=household.id,
-                account_number=household.account_number,
-                head_of_household=household.head_of_household,
-                address=household.address,
-                community_id=household.community_id,
+                connection_id=connection.id,
+                account_number=connection.account_number,
+                contact_name=connection.contact_name,
+                address=connection.address,
+                community_id=connection.community_id,
                 community_name=community.name,
                 meter_id=meter.id,
                 serial_number=meter.serial_number,
@@ -95,15 +95,15 @@ def create_meter(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*READING_ROLES)),
 ):
-    """Fit a meter. If the household already has an active one it is retired (replaced/removed)
+    """Fit a meter. If the connection already has an active one it is retired (replaced/removed)
     and the new meter becomes the one operators read; old readings stay on the old meter."""
-    household = require_household(db, current_user, payload.household_id)
+    connection = require_connection(db, current_user, payload.connection_id)
     if db.query(Meter).filter(Meter.serial_number == payload.serial_number).first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Meter {payload.serial_number} is already registered",
         )
-    active = [m for m in household.meters if m.status == MeterStatus.ACTIVE]
+    active = [m for m in connection.meters if m.status == MeterStatus.ACTIVE]
     if active:
         retire_as = payload.retire_existing_as or MeterStatus.REPLACED
         if retire_as == MeterStatus.ACTIVE:
@@ -126,7 +126,7 @@ def create_meter(
     if meter.install_date is None:
         meter.install_date = datetime.now(timezone.utc)
     db.add(meter)
-    household.has_meter = True
+    connection.has_meter = True
     db.commit()
     db.refresh(meter)
     return meter
@@ -143,13 +143,13 @@ def set_meter_status(
     meter = db.query(Meter).filter(Meter.id == meter_id).first()
     if not meter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meter not found")
-    household = require_household(db, current_user, meter.household_id)
+    connection = require_connection(db, current_user, meter.connection_id)
     if new_status == MeterStatus.ACTIVE:
-        for other in household.meters:
+        for other in connection.meters:
             if other.id != meter.id and other.status == MeterStatus.ACTIVE:
                 other.status = MeterStatus.REPLACED
     meter.status = new_status
-    household.has_meter = any(m.status == MeterStatus.ACTIVE for m in household.meters)
+    connection.has_meter = any(m.status == MeterStatus.ACTIVE for m in connection.meters)
     db.commit()
     db.refresh(meter)
     return meter
@@ -164,11 +164,11 @@ def create_reading(
     meter = db.query(Meter).filter(Meter.id == payload.meter_id).first()
     if not meter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meter not found")
-    require_household(db, current_user, meter.household_id)
+    require_connection(db, current_user, meter.connection_id)
     if meter.status != MeterStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Meter {meter.serial_number} is {meter.status.value}; read the household's active meter",
+            detail=f"Meter {meter.serial_number} is {meter.status.value}; read the connection's active meter",
         )
 
     reading = record_reading(
@@ -197,11 +197,11 @@ def list_readings(
     query = (
         db.query(MeterReading)
         .join(Meter, Meter.id == MeterReading.meter_id)
-        .join(Household, Household.id == Meter.household_id)
+        .join(Connection, Connection.id == Meter.connection_id)
     )
     ids = visible_community_ids(db, current_user)
     if ids is not None:
-        query = query.filter(Household.community_id.in_(ids)) if ids else query.filter(False)
+        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
     if meter_id:
         query = query.filter(MeterReading.meter_id == meter_id)
     return query.order_by(MeterReading.reading_date.desc()).offset(skip).limit(limit).all()
@@ -225,7 +225,7 @@ def delete_reading(
     meter_id = reading.meter_id
     owner = db.query(Meter).filter(Meter.id == meter_id).first()
     if owner:
-        require_household(db, current_user, owner.household_id)
+        require_connection(db, current_user, owner.connection_id)
     db.delete(reading)
     db.flush()
     meter = db.query(Meter).filter(Meter.id == meter_id).first()

@@ -1,6 +1,6 @@
 """The whole hierarchy as one scoped tree.
 
-ORG -> PARTNER -> COMMITTEE -> COMMUNITY -> HOUSEHOLD -> METER. Each login gets the
+ORG -> PARTNER -> COMMITTEE -> COMMUNITY -> CONNECTION -> METER. Each login gets the
 branch below its own level, built on the server so every client sees the same scope.
 """
 
@@ -11,19 +11,19 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.community import Community
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.meter import Meter
 from app.models.organization import Organization
 from app.models.partner import Partner
 from app.models.user import User, UserRole
 from app.models.water_committee import WaterCommittee
-from app.services.scope import scope_committees, scope_communities, scope_households
+from app.services.scope import scope_committees, scope_communities, scope_connections
 
 router = APIRouter(prefix="/structure", tags=["structure"])
 
 
 class TreeNode(BaseModel):
-    level: str  # organization | partner | committee | community | household | meter
+    level: str  # organization | partner | committee | community | connection | meter
     id: str
     name: str
     meta: str | None = None
@@ -49,28 +49,28 @@ def structure_tree(
 ):
     committees = scope_committees(db, current_user, db.query(WaterCommittee)).order_by(WaterCommittee.name).all()
     communities = scope_communities(db, current_user, db.query(Community)).order_by(Community.name).all()
-    households = scope_households(db, current_user, db.query(Household)).order_by(Household.head_of_household).all()
-    household_ids = [h.id for h in households]
+    connections = scope_connections(db, current_user, db.query(Connection)).order_by(Connection.contact_name).all()
+    connection_ids = [h.id for h in connections]
     meters = (
-        db.query(Meter).filter(Meter.household_id.in_(household_ids)).order_by(Meter.created_at.desc()).all()
-        if household_ids else []
+        db.query(Meter).filter(Meter.connection_id.in_(connection_ids)).order_by(Meter.created_at.desc()).all()
+        if connection_ids else []
     )
 
-    meters_by_household: dict = {}
+    meters_by_connection: dict = {}
     for m in meters:
-        meters_by_household.setdefault(m.household_id, []).append(_meter_node(m))
-    households_by_community: dict = {}
-    for h in households:
+        meters_by_connection.setdefault(m.connection_id, []).append(_meter_node(m))
+    connections_by_community: dict = {}
+    for h in connections:
         status = h.status.value if hasattr(h.status, "value") else str(h.status)
-        households_by_community.setdefault(h.community_id, []).append(
-            TreeNode(level="household", id=str(h.id), name=h.head_of_household, meta=h.account_number,
-                     status=status, children=meters_by_household.get(h.id, []))
+        connections_by_community.setdefault(h.community_id, []).append(
+            TreeNode(level="connection", id=str(h.id), name=h.contact_name, meta=h.account_number,
+                     status=status, children=meters_by_connection.get(h.id, []))
         )
     communities_by_committee: dict = {}
     for c in communities:
         communities_by_committee.setdefault(c.water_committee_id, []).append(
             TreeNode(level="community", id=str(c.id), name=c.name, meta=c.region,
-                     children=households_by_community.get(c.id, []))
+                     children=connections_by_community.get(c.id, []))
         )
     committees_by_partner: dict = {}
     for w in committees:
@@ -79,10 +79,10 @@ def structure_tree(
                      children=communities_by_committee.get(w.id, []))
         )
 
-    # Viewers attached to one household or one community start there.
-    if current_user.role == UserRole.READER and current_user.household_id:
-        nodes = [n for group in households_by_community.values() for n in group]
-        return TreeResponse(root_level="household", nodes=nodes)
+    # Viewers attached to one connection or one community start there.
+    if current_user.role == UserRole.READER and current_user.connection_id:
+        nodes = [n for group in connections_by_community.values() for n in group]
+        return TreeResponse(root_level="connection", nodes=nodes)
     if current_user.role in (UserRole.READER, UserRole.OPERATOR) and not current_user.water_committee_id and (
         current_user.community_id or current_user.assigned_communities
     ):

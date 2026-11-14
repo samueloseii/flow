@@ -8,7 +8,7 @@ from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.billing import Invoice, InvoiceStatus, Payment
 from app.models.community import Community
-from app.models.household import Household, HouseholdStatus
+from app.models.connection import Connection, ConnectionStatus
 from app.models.maintenance import MaintenanceRecord, MaintenanceStatus
 from app.models.meter import Meter, MeterReading
 from app.models.partner import Partner
@@ -28,31 +28,31 @@ def community_dashboard(
     if not community:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Community not found")
 
-    total_households = db.query(Household).filter(
-        Household.community_id == community_id
+    total_connections = db.query(Connection).filter(
+        Connection.community_id == community_id
     ).count()
-    active_households = db.query(Household).filter(
-        Household.community_id == community_id,
-        Household.status == HouseholdStatus.ACTIVE,
+    active_connections = db.query(Connection).filter(
+        Connection.community_id == community_id,
+        Connection.status == ConnectionStatus.ACTIVE,
     ).count()
 
-    household_ids = db.query(Household.id).filter(
-        Household.community_id == community_id
+    connection_ids = db.query(Connection.id).filter(
+        Connection.community_id == community_id
     ).subquery()
 
-    total_meters = db.query(Meter).filter(Meter.household_id.in_(household_ids)).count()
+    total_meters = db.query(Meter).filter(Meter.connection_id.in_(connection_ids)).count()
 
     total_invoiced = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(
-        Invoice.household_id.in_(household_ids)
+        Invoice.connection_id.in_(connection_ids)
     ).scalar()
     total_paid = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.household_id.in_(household_ids)
+        Payment.connection_id.in_(connection_ids)
     ).scalar()
 
     collection_rate = (total_paid / total_invoiced * 100) if total_invoiced > 0 else 0.0
 
     total_arrears = db.query(func.coalesce(func.sum(Invoice.balance_due), 0)).filter(
-        Invoice.household_id.in_(household_ids),
+        Invoice.connection_id.in_(connection_ids),
         Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PARTIAL, InvoiceStatus.OVERDUE]),
     ).scalar()
 
@@ -63,13 +63,13 @@ def community_dashboard(
 
     avg_consumption = db.query(func.coalesce(func.avg(MeterReading.consumption_m3), 0)).filter(
         MeterReading.meter_id.in_(
-            db.query(Meter.id).filter(Meter.household_id.in_(household_ids))
+            db.query(Meter.id).filter(Meter.connection_id.in_(connection_ids))
         )
     ).scalar()
 
     return CommunityDashboard(
-        total_households=total_households,
-        active_households=active_households,
+        total_connections=total_connections,
+        active_connections=active_connections,
         total_meters=total_meters,
         collection_rate=round(collection_rate, 1),
         total_revenue=float(total_paid),
@@ -88,23 +88,23 @@ def partner_dashboard(
     community_ids = db.query(Community.id).filter(Community.partner_id == partner_id).subquery()
     total_communities = db.query(Community).filter(Community.partner_id == partner_id).count()
 
-    household_ids = db.query(Household.id).filter(
-        Household.community_id.in_(community_ids)
+    connection_ids = db.query(Connection.id).filter(
+        Connection.community_id.in_(community_ids)
     ).subquery()
-    total_households = db.query(Household).filter(
-        Household.community_id.in_(community_ids)
+    total_connections = db.query(Connection).filter(
+        Connection.community_id.in_(community_ids)
     ).count()
 
     total_invoiced = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(
-        Invoice.household_id.in_(household_ids)
+        Invoice.connection_id.in_(connection_ids)
     ).scalar()
     total_paid = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.household_id.in_(household_ids)
+        Payment.connection_id.in_(connection_ids)
     ).scalar()
     collection_rate = (total_paid / total_invoiced * 100) if total_invoiced > 0 else 0.0
 
     total_arrears = db.query(func.coalesce(func.sum(Invoice.balance_due), 0)).filter(
-        Invoice.household_id.in_(household_ids),
+        Invoice.connection_id.in_(connection_ids),
         Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PARTIAL, InvoiceStatus.OVERDUE]),
     ).scalar()
 
@@ -115,7 +115,7 @@ def partner_dashboard(
 
     return PartnerDashboard(
         total_communities=total_communities,
-        total_households=total_households,
+        total_connections=total_connections,
         overall_collection_rate=round(collection_rate, 1),
         total_revenue=float(total_paid),
         total_arrears=float(total_arrears),
@@ -131,7 +131,7 @@ def system_dashboard(
 ):
     total_partners = db.query(Partner).count()
     total_communities = db.query(Community).count()
-    total_households = db.query(Household).count()
+    total_connections = db.query(Connection).count()
     total_users = db.query(User).count()
 
     total_invoiced = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).scalar()
@@ -145,7 +145,7 @@ def system_dashboard(
     return SystemDashboard(
         total_partners=total_partners,
         total_communities=total_communities,
-        total_households=total_households,
+        total_connections=total_connections,
         total_users=total_users,
         overall_collection_rate=round(collection_rate, 1),
         total_revenue=float(total_paid),

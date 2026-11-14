@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.community import Community
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.partner import Partner
 from app.models.user import User, UserRole
 from app.services.scope import require_committee, require_community, scope_communities
@@ -103,10 +103,10 @@ def delete_community(
     current_user: User = Depends(require_role(*COMMUNITY_MANAGERS)),
 ):
     community = require_community(db, current_user, community_id)
-    if db.query(Household).filter(Household.community_id == community_id).count():
+    if db.query(Connection).filter(Connection.community_id == community_id).count():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Delete the households in this community first",
+            detail="Delete the connections in this community first",
         )
     db.query(User).filter(User.community_id == community_id).update(
         {User.community_id: None}, synchronize_session=False

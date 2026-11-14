@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.billing import Invoice, Payment
 from app.models.community import Community
 from app.models.expense import Expense
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.partner import Partner
 from app.models.user import User, UserRole
 from app.models.water_committee import WaterCommittee
@@ -30,9 +30,9 @@ def _response(db: Session, committee: WaterCommittee) -> WaterCommitteeResponse:
     response.community_count = (
         db.query(Community).filter(Community.water_committee_id == committee.id).count()
     )
-    response.household_count = (
-        db.query(Household)
-        .join(Community, Community.id == Household.community_id)
+    response.connection_count = (
+        db.query(Connection)
+        .join(Community, Community.id == Connection.community_id)
         .filter(Community.water_committee_id == committee.id)
         .count()
     )
@@ -132,15 +132,15 @@ def committee_financials(
     totals = {"billed": 0.0, "collected": 0.0, "outstanding": 0.0, "expenses": 0.0}
     currency = communities[0].currency if communities else "USD"
     for community in communities:
-        hh = db.query(Household.id).filter(Household.community_id == community.id).subquery()
+        hh = db.query(Connection.id).filter(Connection.community_id == community.id).subquery()
         billed = db.query(func.coalesce(func.sum(Invoice.total_amount), 0.0)).filter(
-            Invoice.household_id.in_(hh)
+            Invoice.connection_id.in_(hh)
         ).scalar()
         outstanding = db.query(func.coalesce(func.sum(Invoice.balance_due), 0.0)).filter(
-            Invoice.household_id.in_(hh)
+            Invoice.connection_id.in_(hh)
         ).scalar()
         collected = db.query(func.coalesce(func.sum(Payment.amount), 0.0)).filter(
-            Payment.household_id.in_(hh)
+            Payment.connection_id.in_(hh)
         ).scalar()
         expenses = db.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(
             Expense.community_id == community.id

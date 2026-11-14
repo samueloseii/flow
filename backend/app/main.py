@@ -14,7 +14,7 @@ from app.db.session import engine
 from app.models import (  # noqa: F401  — ensure all models are registered
     Community,
     Expense,
-    Household,
+    Connection,
     Invoice,
     MaintenanceRecord,
     Meter,

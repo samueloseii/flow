@@ -24,8 +24,8 @@ const ALL = ['super_admin', 'partner_admin', 'community_admin', 'treasurer', 're
 const MONEY = ['super_admin', 'partner_admin', 'community_admin', 'treasurer']
 const MANAGE = ['super_admin', 'partner_admin', 'community_admin']
 
-// One "Structure" entry walks the tree Partner → Water committee → Community → Household → Meter,
-// starting at the account's own level, so communities and households are never shown as peers.
+// One "Structure" entry walks the tree Partner → Water committee → Community → Connection → Meter,
+// starting at the account's own level, so communities and connections are never shown as peers.
 const navGroups: { label: string; items: NavItem[] }[] = [
   { label: '', items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ALL }] },
   {
@@ -51,7 +51,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   },
 ]
 
-function visibleGroups(user: { role: string; partner_id?: string | null; water_committee_id?: string | null; community_id?: string | null; household_id?: string | null } | null) {
+function visibleGroups(user: { role: string; partner_id?: string | null; water_committee_id?: string | null; community_id?: string | null; connection_id?: string | null } | null) {
   if (!user) return []
   return navGroups
     .map((g) => ({
