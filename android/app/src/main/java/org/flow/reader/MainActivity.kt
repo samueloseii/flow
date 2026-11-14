@@ -38,6 +38,7 @@ private sealed interface Screen {
 }
 
 @Composable
+@Suppress("UnusedMaterial3ScaffoldPaddingParameter")
 private fun FlowAppRoot(vm: FlowViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     val meters by vm.meters.collectAsStateWithLifecycle()

@@ -62,7 +62,7 @@ class ReadingRepository(
                 accountNumber = it.accountNumber,
                 contactName = it.contactName,
                 address = it.address,
-                communityId = it.communityId,
+                communityId = it.communityId ?: "",
                 serialNumber = it.serialNumber,
                 lastReadingValue = it.lastReadingValue,
                 lastReadingDate = it.lastReadingDate,
