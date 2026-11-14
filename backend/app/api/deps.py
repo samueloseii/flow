@@ -10,18 +10,16 @@ from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-# Roles that administer a water system: accounts, billing, payments, expenses.
-ADMIN_ROLES = (
-    UserRole.SUPER_ADMIN,
-    UserRole.PARTNER_ADMIN,
-    UserRole.COMMUNITY_ADMIN,
-    UserRole.TREASURER,
-)
+# Roles that may create and delete entities at their level and below.
+MANAGE_ROLES = (UserRole.SUPER_ADMIN, UserRole.ADMIN)
+
+# Roles that may edit (administer a water system: accounts, billing, payments, expenses).
+ADMIN_ROLES = MANAGE_ROLES + (UserRole.EDITOR,)
 
 # Roles that work in the field: meter readings and issue reports.
-FIELD_ROLES = (UserRole.OPERATOR, UserRole.READER)
+FIELD_ROLES = (UserRole.OPERATOR, UserRole.VIEWER)
 
-# Roles allowed to submit meter readings.
+# Roles allowed to submit meter readings and add / replace meters.
 READING_ROLES = ADMIN_ROLES + (UserRole.OPERATOR,)
 
 

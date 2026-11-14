@@ -11,6 +11,7 @@ from app.models.community import Community
 from app.models.expense import Expense
 from app.models.connection import Connection
 from app.models.partner import Partner
+from app.models.tariff import Tariff
 from app.models.user import User, UserRole
 from app.models.water_committee import WaterCommittee
 from app.schemas.water_committee import (
@@ -19,7 +20,8 @@ from app.schemas.water_committee import (
     WaterCommitteeResponse,
     WaterCommitteeUpdate,
 )
-from app.services.scope import forbid, require_committee, scope_committees
+from app.models.user_relation import EntityLevel
+from app.services.scope import forbid, require_committee, require_manage, require_partner, scope_committees, visible_partner_ids
 
 router = APIRouter(prefix="/water-committees", tags=["water-committees"])
 
@@ -31,10 +33,7 @@ def _response(db: Session, committee: WaterCommittee) -> WaterCommitteeResponse:
         db.query(Community).filter(Community.water_committee_id == committee.id).count()
     )
     response.connection_count = (
-        db.query(Connection)
-        .join(Community, Community.id == Connection.community_id)
-        .filter(Community.water_committee_id == committee.id)
-        .count()
+        db.query(Connection).filter(Connection.water_committee_id == committee.id).count()
     )
     return response
 
@@ -52,17 +51,23 @@ def list_committees(
 def create_committee(
     payload: WaterCommitteeCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.PARTNER_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
 ):
-    """Partners set up the committees they support."""
+    """Partner administrators (and above) set up the committees they support."""
+    require_manage(current_user, EntityLevel.WATER_COMMITTEE)
     partner_id = payload.partner_id
-    if current_user.role == UserRole.PARTNER_ADMIN:
-        partner_id = current_user.partner_id
     if partner_id is None:
-        partner = db.query(Partner).order_by(Partner.created_at).first()
-        if not partner:
-            raise HTTPException(status_code=400, detail="Create a partner organisation first")
-        partner_id = partner.id
+        visible = visible_partner_ids(db, current_user)
+        if visible is None:
+            partner = db.query(Partner).order_by(Partner.created_at).first()
+            if not partner:
+                raise HTTPException(status_code=400, detail="Create a partner first")
+            partner_id = partner.id
+        elif len(visible) == 1:
+            partner_id = visible[0]
+        else:
+            raise HTTPException(status_code=400, detail="Choose the partner this committee belongs to")
+    require_partner(db, current_user, partner_id)
     committee = WaterCommittee(**payload.model_dump(exclude={"partner_id"}), partner_id=partner_id)
     db.add(committee)
     db.commit()
@@ -84,9 +89,7 @@ def update_committee(
     committee_id: uuid.UUID,
     payload: WaterCommitteeUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_role(UserRole.SUPER_ADMIN, UserRole.PARTNER_ADMIN, UserRole.COMMUNITY_ADMIN)
-    ),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.EDITOR)),
 ):
     committee = require_committee(db, current_user, committee_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
@@ -100,17 +103,16 @@ def update_committee(
 def delete_committee(
     committee_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.PARTNER_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
 ):
+    require_manage(current_user, EntityLevel.WATER_COMMITTEE)
     committee = require_committee(db, current_user, committee_id)
-    if db.query(Community).filter(Community.water_committee_id == committee_id).count():
+    if db.query(Connection).filter(Connection.water_committee_id == committee_id).count():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Move or delete this committee's communities first",
+            detail="Move or delete this committee's connections first",
         )
-    db.query(User).filter(User.water_committee_id == committee_id).update(
-        {User.water_committee_id: None}, synchronize_session=False
-    )
+    db.query(Community).filter(Community.water_committee_id == committee_id).delete(synchronize_session=False)
     db.delete(committee)
     db.commit()
 
@@ -122,17 +124,21 @@ def committee_financials(
     current_user: User = Depends(get_current_user),
 ):
     """Money across every community the committee runs, in one view."""
-    if current_user.role in (UserRole.OPERATOR, UserRole.READER):
+    if current_user.role in (UserRole.OPERATOR, UserRole.VIEWER):
         raise forbid()
     require_committee(db, current_user, committee_id)
     communities = (
         db.query(Community).filter(Community.water_committee_id == committee_id).all()
     )
+    default_tariff = db.query(Tariff).filter(Tariff.water_committee_id == committee_id).order_by(Tariff.is_default.desc()).first()
+    currency = default_tariff.currency if default_tariff else "USD"
     rows = []
     totals = {"billed": 0.0, "collected": 0.0, "outstanding": 0.0, "expenses": 0.0}
-    currency = communities[0].currency if communities else "USD"
-    for community in communities:
-        hh = db.query(Connection.id).filter(Connection.community_id == community.id).subquery()
+    groups = [(c.id, c.name, Connection.community_id == c.id) for c in communities]
+    groups.append((None, "Not grouped" if communities else "All connections",
+                   Connection.community_id.is_(None) if communities else Connection.water_committee_id == committee_id))
+    for group_id, group_name, cond in groups:
+        hh = db.query(Connection.id).filter(Connection.water_committee_id == committee_id, cond).subquery()
         billed = db.query(func.coalesce(func.sum(Invoice.total_amount), 0.0)).filter(
             Invoice.connection_id.in_(hh)
         ).scalar()
@@ -143,11 +149,12 @@ def committee_financials(
             Payment.connection_id.in_(hh)
         ).scalar()
         expenses = db.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(
-            Expense.community_id == community.id
+            Expense.water_committee_id == committee_id,
+            Expense.community_id == group_id if group_id else Expense.community_id.is_(None),
         ).scalar()
         row = {
-            "community_id": str(community.id),
-            "community_name": community.name,
+            "community_id": str(group_id) if group_id else None,
+            "community_name": group_name,
             "total_billed": round(float(billed), 2),
             "total_collected": round(float(collected), 2),
             "outstanding": round(float(outstanding), 2),

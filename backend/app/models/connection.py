@@ -16,7 +16,19 @@ class ConnectionStatus(str, enum.Enum):
     DISCONNECTED = "disconnected"
 
 
+class ConnectionType(str, enum.Enum):
+    HOUSEHOLD = "household"
+    SCHOOL = "school"
+    CLINIC = "clinic"
+    COMMERCIAL = "commercial"
+    PUBLIC_TAP = "public_tap"
+    INSTITUTION = "institution"
+    OTHER = "other"
+
+
 class Connection(Base):
+    """A metered (or flat-rate) service point belonging to a water committee."""
+
     __tablename__ = "connections"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -27,6 +39,9 @@ class Connection(Base):
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     members_count: Mapped[int] = mapped_column(Integer, default=1)
+    connection_type: Mapped[ConnectionType] = mapped_column(
+        Enum(ConnectionType), default=ConnectionType.HOUSEHOLD
+    )
     status: Mapped[ConnectionStatus] = mapped_column(
         Enum(ConnectionStatus), default=ConnectionStatus.ACTIVE
     )
@@ -36,8 +51,12 @@ class Connection(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    community_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("communities.id")
+    water_committee_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("water_committees.id"), index=True
+    )
+    # Optional grouping (community, reading circuit ...); not part of the hierarchy.
+    community_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("communities.id"), nullable=True, index=True
     )
     tariff_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("tariffs.id"), nullable=True
@@ -52,7 +71,10 @@ class Connection(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    community: Mapped["Community"] = relationship(back_populates="connections")  # noqa: F821
+    water_committee: Mapped["WaterCommittee"] = relationship(  # noqa: F821
+        back_populates="connections"
+    )
+    community: Mapped["Community | None"] = relationship(back_populates="connections")  # noqa: F821
     meters: Mapped[list["Meter"]] = relationship(  # noqa: F821
         back_populates="connection", order_by="desc(Meter.created_at)"
     )

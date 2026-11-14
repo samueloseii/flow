@@ -16,7 +16,8 @@ from app.models.community import Community
 from app.models.connection import Connection
 from app.models.meter import Meter, MeterReading, MeterStatus
 from app.models.user import User
-from app.services.scope import require_community, visible_community_ids, visible_connection_ids
+from app.models.user_relation import EntityLevel
+from app.services.scope import parent_level, require_committee, require_community, require_manage, scope_connections, visible_connection_ids
 
 router = APIRouter(prefix="/readings", tags=["readings"])
 
@@ -63,12 +64,10 @@ def list_raw_readings(
         db.query(MeterReading, Meter, Connection, Community, Invoice)
         .join(Meter, Meter.id == MeterReading.meter_id)
         .join(Connection, Connection.id == Meter.connection_id)
-        .join(Community, Community.id == Connection.community_id)
+        .outerjoin(Community, Community.id == Connection.community_id)
         .outerjoin(Invoice, Invoice.id == MeterReading.invoice_id)
     )
-    ids = visible_community_ids(db, current_user)
-    if ids is not None:
-        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
+    query = scope_connections(db, current_user, query)
     connection_ids = visible_connection_ids(db, current_user)
     if connection_ids is not None:
         query = query.filter(Connection.id.in_(connection_ids))
@@ -156,7 +155,8 @@ def import_template(current_user: User = Depends(require_role(*ADMIN_ROLES))):
 
 @router.post("/import", response_model=ImportResult)
 async def import_connections(
-    community_id: uuid.UUID = Query(...),
+    water_committee_id: uuid.UUID | None = Query(None),
+    community_id: uuid.UUID | None = Query(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
@@ -165,7 +165,16 @@ async def import_connections(
 
     The whole file is checked first; nothing is saved if any row has a problem.
     """
-    require_community(db, current_user, community_id)
+    require_manage(current_user, EntityLevel.CONNECTION)
+    community = require_community(db, current_user, community_id) if community_id else None
+    committee_id = water_committee_id or (community.water_committee_id if community else None)
+    if committee_id is None and parent_level(current_user) == EntityLevel.WATER_COMMITTEE:
+        committee_id = current_user.parent.water_committee_id
+    if committee_id is None:
+        raise HTTPException(status_code=400, detail="Choose the water committee to import into")
+    if community and community.water_committee_id != committee_id:
+        raise HTTPException(status_code=400, detail="That community belongs to a different water committee")
+    require_committee(db, current_user, committee_id)
     raw = await file.read()
     try:
         text = raw.decode("utf-8-sig")
@@ -224,6 +233,7 @@ async def import_connections(
             members_count=members,
             notes=data.get("notes") or None,
             has_meter=bool(serial),
+            water_committee_id=committee_id,
             community_id=community_id,
         )
         meter = None

@@ -1,4 +1,4 @@
-"""Partner > water committee > community > connection > meter, with scoped logins and block tariffs."""
+"""Organization > partner > water committee > connection > meter, with UserRelation-scoped logins and block tariffs."""
 
 import io
 import uuid
@@ -36,7 +36,6 @@ def _setup(client, auth):
         headers=auth,
     ).json()
     assert comm_a["water_committee_id"] == committee["id"]
-    assert comm_a["partner_id"] == partner["id"]
     other_committee = client.post(
         f"{API}/water-committees/", json={"name": "Other WC", "partner_id": partner["id"]}, headers=auth
     ).json()
@@ -51,84 +50,148 @@ def _setup(client, auth):
 def test_hierarchy_scoping_and_roles(client, auth):
     partner, committee, comm_a, comm_b, other_committee, comm_other = _setup(client, auth)
 
-    # committee admin created by sys admin
+    # Committee admin: parent = water committee, sees the whole branch
     r = client.post(
         f"{API}/auth/users",
         json={
-            "email": "wc@test.org", "password": "password1", "full_name": "WC Admin",
-            "role": "community_admin", "water_committee_id": committee["id"],
+            "email": "wc-admin@test.org", "password": "password1", "full_name": "WC Admin",
+            "role": "admin", "parent_level": "water_committee", "parent_id": committee["id"],
         },
         headers=auth,
     )
     assert r.status_code == 201, r.text
-    wc = _login(client, "wc@test.org", "password1")
+    assert r.json()["parent_level"] == "water_committee" and r.json()["access_all_children"] is True
+    wc_auth = _login(client, "wc-admin@test.org", "password1")
 
-    # sees only its committee's communities
-    names = {c["name"] for c in client.get(f"{API}/communities/", headers=wc).json()}
-    assert names == {"Cedar A", "Cedar B"}
-    assert client.get(f"{API}/communities/{comm_other['id']}", headers=wc).status_code == 403
-    assert len(client.get(f"{API}/water-committees/", headers=wc).json()) == 1
+    # sees only its committee, not the other one
+    committees = client.get(f"{API}/water-committees/", headers=wc_auth).json()
+    assert [c["id"] for c in committees] == [committee["id"]]
+    assert client.get(f"{API}/communities/", headers=wc_auth).json().__len__() == 2
 
-    # cannot create a sys admin or partner admin
-    for role in ("super_admin", "partner_admin"):
-        r = client.post(
-            f"{API}/auth/users",
-            json={"email": f"{role}@test.org", "password": "password1", "full_name": "x", "role": role},
-            headers=wc,
-        )
-        assert r.status_code == 403, role
+    # cannot create roles above itself or attach accounts above its level
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": "sa@test.org", "password": "password1", "full_name": "x", "role": "super_admin"},
+        headers=wc_auth,
+    )
+    assert r.status_code == 403
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": "pa@test.org", "password": "password1", "full_name": "x", "role": "admin",
+              "parent_level": "partner", "parent_id": partner["id"]},
+        headers=wc_auth,
+    )
+    assert r.status_code == 403
 
-    # can create an operator assigned to two communities
+    # operator restricted to two communities (CHILD relations); parent defaults to the admin's committee
     r = client.post(
         f"{API}/auth/users",
         json={
             "email": "op@test.org", "password": "password1", "full_name": "Op", "role": "operator",
-            "assigned_community_ids": [comm_a["id"], comm_b["id"]],
+            "community_ids": [comm_a["id"], comm_b["id"]],
         },
-        headers=wc,
+        headers=wc_auth,
     )
     assert r.status_code == 201, r.text
-    assert set(r.json()["assigned_community_ids"]) == {comm_a["id"], comm_b["id"]}
+    assert set(r.json()["community_ids"]) == {comm_a["id"], comm_b["id"]}
+    assert r.json()["access_all_children"] is False
     assert r.json()["water_committee_id"] == committee["id"]
-    # but not to a community outside the committee
+
+    # cannot assign a community of another committee
     r = client.post(
         f"{API}/auth/users",
         json={
             "email": "op2@test.org", "password": "password1", "full_name": "Op", "role": "operator",
-            "assigned_community_ids": [comm_other["id"]],
+            "community_ids": [comm_other["id"]],
         },
-        headers=wc,
+        headers=wc_auth,
     )
-    assert r.status_code == 403
+    assert r.status_code in (400, 403), r.text
 
-    # treasurer cannot create a committee admin
-    client.post(
-        f"{API}/auth/users",
-        json={"email": "tr@test.org", "password": "password1", "full_name": "T", "role": "treasurer"},
-        headers=wc,
-    )
-    tr = _login(client, "tr@test.org", "password1")
+    # operators only exist at committee level; viewers are the only connection-level role
     r = client.post(
         f"{API}/auth/users",
-        json={"email": "x@test.org", "password": "password1", "full_name": "x", "role": "community_admin"},
-        headers=tr,
+        json={"email": "op3@test.org", "password": "password1", "full_name": "Op", "role": "operator",
+              "parent_level": "partner", "parent_id": partner["id"]},
+        headers=auth,
     )
+    assert r.status_code == 400, r.text
+
+    # editor (treasurer) at the committee: may edit, may not create
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": "tr@test.org", "password": "password1", "full_name": "T", "role": "editor"},
+        headers=wc_auth,
+    )
+    assert r.status_code == 201, r.text
+    tr_auth = _login(client, "tr@test.org", "password1")
+    r = client.post(f"{API}/connections/", json={"account_number": "E-1", "contact_name": "x", "community_id": comm_a["id"]}, headers=tr_auth)
+    assert r.status_code == 403
+    r = client.patch(f"{API}/water-committees/{committee['id']}", json={"region": "North"}, headers=tr_auth)
+    assert r.status_code == 200, r.text
+    r = client.post(f"{API}/auth/users", json={"email": "x@test.org", "password": "password1", "full_name": "x", "role": "viewer"}, headers=tr_auth)
     assert r.status_code == 403
 
-    # connections in both communities; operator's reading context spans both
-    for comm, acct, serial in ((comm_a, "H-A1", "M-A1"), (comm_b, "H-B1", "M-B1"), (comm_other, "H-O1", "M-O1")):
+    # connections sit directly under the committee; the community is a grouping label
+    for comm, acct in ((comm_a, "A-1"), (comm_b, "B-1"), (comm_other, "O-1")):
         r = client.post(
             f"{API}/connections/",
             json={"account_number": acct, "contact_name": acct, "community_id": comm["id"],
-                  "meter_serial_number": serial, "meter_initial_reading": 100},
+                  "connection_type": "school" if acct == "B-1" else "household",
+                  "meter_serial_number": f"M-{acct}"},
             headers=auth,
         )
         assert r.status_code == 201, r.text
-    op = _login(client, "op@test.org", "password1")
-    ctx = client.get(f"{API}/meters/reading-context", headers=op).json()
-    assert {c["account_number"] for c in ctx} == {"H-A1", "H-B1"}
-    assert ctx[0]["days_since_last_reading"] is None or ctx[0]["days_since_last_reading"] >= 0
-    assert client.get(f"{API}/connections/", headers=wc).json().__len__() == 2
+        assert r.json()["water_committee_id"] == comm["water_committee_id"]
+    r = client.post(f"{API}/connections/", json={"account_number": "G-1", "contact_name": "No group", "water_committee_id": committee["id"]}, headers=wc_auth)
+    assert r.status_code == 201, r.text and r.json()["community_id"] is None
+
+    # the committee admin sees all four of its connections, the operator only the grouped ones
+    accts = {h["account_number"] for h in client.get(f"{API}/connections/", headers=wc_auth).json()}
+    assert {"A-1", "B-1", "G-1"} <= accts and "O-1" not in accts
+    op_auth = _login(client, "op@test.org", "password1")
+    accts = {h["account_number"] for h in client.get(f"{API}/connections/", headers=op_auth).json()}
+    assert accts == {"A-1", "B-1"}
+    # operator reads meters but cannot open accounts
+    r = client.post(f"{API}/connections/", json={"account_number": "Z-1", "contact_name": "x", "community_id": comm_a["id"]}, headers=op_auth)
+    assert r.status_code == 403
+
+    # connection-level viewer sees one connection only
+    conn_a = next(h for h in client.get(f"{API}/connections/", headers=auth).json() if h["account_number"] == "A-1")
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": "member@test.org", "password": "password1", "full_name": "Member", "role": "viewer",
+              "parent_level": "connection", "parent_id": conn_a["id"]},
+        headers=wc_auth,
+    )
+    assert r.status_code == 201, r.text
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": "member2@test.org", "password": "password1", "full_name": "Member", "role": "editor",
+              "parent_level": "connection", "parent_id": conn_a["id"]},
+        headers=wc_auth,
+    )
+    assert r.status_code == 400
+    m_auth = _login(client, "member@test.org", "password1")
+    assert [h["account_number"] for h in client.get(f"{API}/connections/", headers=m_auth).json()] == ["A-1"]
+    tree = client.get(f"{API}/structure/tree", headers=m_auth).json()
+    assert tree["root_level"] == "connection" and [n["id"] for n in tree["nodes"]] == [conn_a["id"]]
+
+    # partner admin sees the committee it creates (and the people in it)
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": "partner-admin@test.org", "password": "password1", "full_name": "PA", "role": "admin",
+              "parent_level": "partner", "parent_id": partner["id"]},
+        headers=auth,
+    )
+    assert r.status_code == 201, r.text
+    pa_auth = _login(client, "partner-admin@test.org", "password1")
+    r = client.post(f"{API}/water-committees/", json={"name": "New WC"}, headers=pa_auth)
+    assert r.status_code == 201, r.text
+    ids = {c["id"] for c in client.get(f"{API}/water-committees/", headers=pa_auth).json()}
+    assert r.json()["id"] in ids and committee["id"] in ids
+    emails = {u["email"] for u in client.get(f"{API}/auth/users", headers=pa_auth).json()}
+    assert {"wc-admin@test.org", "op@test.org", "member@test.org"} <= emails
 
 
 def test_block_tariff_and_billing_traceability(client, auth):
@@ -262,7 +325,7 @@ def test_meter_replacement_and_csv_import(client, auth):
         files={"file": ("h.csv", io.BytesIO(bad.encode()), "text/csv")}, headers=auth,
     )
     assert r.status_code == 200 and r.json()["created_connections"] == 0
-    assert r.json()["errors"][0]["row"] == 3
+    assert r.json()["errors"][0]["row"] == 3, r.json()
     good = "account_number,contact_name,meter_serial_number,meter_initial_reading\nC-1,Ann,CSV-1,10\nC-2,Bob,,\n"
     r = client.post(
         f"{API}/readings/import", params={"community_id": comm_a["id"]},
@@ -321,8 +384,8 @@ def test_organization_level_and_structure_tree(client, auth):
     org_node = next(n for n in tree["nodes"] if n["id"] == org["id"])
     partner_node = next(n for n in org_node["children"] if n["id"] == partner["id"])
     committee_node = next(n for n in partner_node["children"] if n["id"] == committee["id"])
-    community_node = next(n for n in committee_node["children"] if n["id"] == community["id"])
-    connection_node = next(n for n in community_node["children"] if n["id"] == connection["id"])
+    connection_node = next(n for n in committee_node["children"] if n["id"] == connection["id"])
+    assert connection_node["group"] == "Tree Community"
     statuses = {m["name"]: m["status"] for m in connection_node["children"]}
     assert statuses[new_serial] == "active"
     assert "removed" in statuses.values() and len(statuses) == 2
@@ -332,11 +395,12 @@ def test_organization_level_and_structure_tree(client, auth):
     r = client.post(
         f"{API}/auth/users",
         json={"email": email, "password": "treasurer-pass", "full_name": "Tree Treasurer",
-              "role": "treasurer", "water_committee_id": committee["id"]},
+              "role": "editor", "parent_level": "water_committee", "parent_id": committee["id"]},
         headers=auth,
     )
     assert r.status_code in (200, 201), r.text
     t_tree = client.get(f"{API}/structure/tree", headers=_login(client, email, "treasurer-pass")).json()
     assert t_tree["root_level"] == "committee"
     assert [n["id"] for n in t_tree["nodes"]] == [committee["id"]]
-    assert client.get(f"{API}/organizations/", headers=_login(client, email, "treasurer-pass")).json() == []
+    orgs = client.get(f"{API}/organizations/", headers=_login(client, email, "treasurer-pass")).json()
+    assert [o["id"] for o in orgs] == [org["id"]]  # only the branch it belongs to

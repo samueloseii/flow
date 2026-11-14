@@ -2,31 +2,26 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Table, Text
-from app.db.types import GUID
+from sqlalchemy import Boolean, DateTime, Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.types import GUID
 
 
 class UserRole(str, enum.Enum):
+    """Super admin sees everything; the others act at their parent entity and below.
+
+    admin: create / edit / delete.  editor: edit only (the treasurer).
+    operator: submit meter readings, add or replace meters (water committee level only).
+    viewer: read only (the only role allowed at connection level).
+    """
+
     SUPER_ADMIN = "super_admin"
-    PARTNER_ADMIN = "partner_admin"
-    COMMUNITY_ADMIN = "community_admin"
+    ADMIN = "admin"
+    EDITOR = "editor"
     OPERATOR = "operator"
-    TREASURER = "treasurer"
-    READER = "reader"
-
-
-# Communities an operator is expected to visit (may span several in one committee).
-operator_communities = Table(
-    "operator_communities",
-    Base.metadata,
-    Column("user_id", GUID(), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
-    Column(
-        "community_id", GUID(), ForeignKey("communities.id", ondelete="CASCADE"), primary_key=True
-    ),
-)
+    VIEWER = "viewer"
 
 
 class User(Base):
@@ -37,23 +32,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.READER)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.VIEWER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     preferred_language: Mapped[str] = mapped_column(String(10), default="es")
-
-    partner_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("partners.id"), nullable=True
-    )
-    water_committee_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("water_committees.id"), nullable=True
-    )
-    community_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("communities.id"), nullable=True
-    )
-    # Community members: a viewer login limited to one connection.
-    connection_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("connections.id"), nullable=True
-    )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -65,12 +46,20 @@ class User(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    partner: Mapped["Partner | None"] = relationship(back_populates="users")  # noqa: F821
-    community: Mapped["Community | None"] = relationship(back_populates="users")  # noqa: F821
-    water_committee: Mapped["WaterCommittee | None"] = relationship(  # noqa: F821
-        back_populates="users"
+    # Where the account sits in the hierarchy (one PARENT row) and, when it is
+    # restricted to part of that branch, the CHILD rows it may see.
+    relations: Mapped[list["UserRelation"]] = relationship(  # noqa: F821
+        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
-    connection: Mapped["Connection | None"] = relationship()  # noqa: F821
-    assigned_communities: Mapped[list["Community"]] = relationship(  # noqa: F821
-        secondary=operator_communities
-    )
+
+    @property
+    def parent(self) -> "UserRelation | None":  # noqa: F821
+        from app.models.user_relation import RelationType
+
+        return next((r for r in self.relations if r.relation_type == RelationType.PARENT), None)
+
+    @property
+    def children(self) -> list["UserRelation"]:  # noqa: F821
+        from app.models.user_relation import RelationType
+
+        return [r for r in self.relations if r.relation_type == RelationType.CHILD]

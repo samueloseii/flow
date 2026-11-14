@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import ADMIN_ROLES, require_role
 from app.db.session import get_db
 from app.models.community import Community
+from app.models.tariff import Tariff
+from app.services.scope import require_committee, visible_committee_ids
 from app.models.expense import Expense
 from app.models.user import User
 from app.schemas.expense import (
@@ -34,6 +36,8 @@ def _filtered(
     date_to: datetime | None,
 ):
     query = db.query(Expense, Community).outerjoin(Community, Community.id == Expense.community_id)
+    if water_committee_id:
+        query = query.filter(Expense.water_committee_id == water_committee_id)
     if community_id:
         query = query.filter(Expense.community_id == community_id)
     if category:
@@ -45,8 +49,27 @@ def _filtered(
     return query
 
 
+def _resolve_committee(db: Session, user: User, water_committee_id, community_id):
+    """Expenses and maintenance belong to the water committee; a community is an optional grouping."""
+    community = db.query(Community).filter(Community.id == community_id).first() if community_id else None
+    if community_id and not community:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Community not found")
+    committee_id = water_committee_id or (community.water_committee_id if community else None)
+    if committee_id is None:
+        rel = user.parent
+        if rel is not None and rel.water_committee_id:
+            committee_id = rel.water_committee_id
+    if committee_id is None:
+        raise HTTPException(status_code=400, detail="Choose the water committee")
+    if community and community.water_committee_id != committee_id:
+        raise HTTPException(status_code=400, detail="That community belongs to a different water committee")
+    require_committee(db, user, committee_id)
+    return committee_id, community
+
+
 @router.get("/", response_model=list[ExpenseResponse])
 def list_expenses(
+    water_committee_id: uuid.UUID | None = Query(None),
     community_id: uuid.UUID | None = Query(None),
     category: str | None = Query(None),
     date_from: datetime | None = Query(None),
@@ -68,6 +91,7 @@ def list_expenses(
 
 @router.get("/summary", response_model=ExpenseSummary)
 def expense_summary(
+    water_committee_id: uuid.UUID | None = Query(None),
     community_id: uuid.UUID | None = Query(None),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
@@ -103,11 +127,12 @@ def create_expense(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
-    community = db.query(Community).filter(Community.id == payload.community_id).first()
-    if not community:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Community not found")
-    expense = Expense(**payload.model_dump(), recorded_by=current_user.full_name)
-    expense.currency = community.currency
+    committee_id, community = _resolve_committee(db, current_user, payload.water_committee_id, payload.community_id)
+    data = payload.model_dump()
+    data["water_committee_id"] = committee_id
+    expense = Expense(**data, recorded_by=current_user.full_name)
+    default_tariff = db.query(Tariff).filter(Tariff.water_committee_id == committee_id).order_by(Tariff.is_default.desc()).first()
+    expense.currency = default_tariff.currency if default_tariff else "USD"
     db.add(expense)
     db.commit()
     db.refresh(expense)

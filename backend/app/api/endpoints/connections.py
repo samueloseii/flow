@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.api.deps import ADMIN_ROLES, get_current_user, require_role
+from app.api.deps import ADMIN_ROLES, MANAGE_ROLES, get_current_user, require_role
+from app.models.user_relation import EntityLevel
 from app.db.session import get_db
 from app.models.billing import Invoice, Payment
 from app.models.community import Community
@@ -15,7 +16,7 @@ from app.models.meter import MeterStatus
 from app.models.tariff import Tariff
 from app.models.user import User
 from app.schemas.meter import MeterReadingResponse, MeterResponse
-from app.services.scope import can_see_committee, forbid, require_community, require_connection, scope_connections
+from app.services.scope import can_see_committee, forbid, parent_level, require_committee, require_community, require_connection, require_manage, scope_connections
 from app.schemas.billing import InvoiceResponse, PaymentResponse
 from app.schemas.connection import (
     ConsumptionPoint,
@@ -40,9 +41,14 @@ def _connection_response(
         response.last_reading_date = meter.last_reading_date
     if community:
         response.community_name = community.name
-        response.currency = community.currency
+    if connection.water_committee:
+        response.water_committee_name = connection.water_committee.name
     if connection.tariff:
         response.tariff_name = connection.tariff.name
+        response.currency = connection.tariff.currency
+    else:
+        default = next((t for t in connection.water_committee.tariffs if t.is_default), None) if connection.water_committee else None
+        response.currency = default.currency if default else None
     return response
 
 
@@ -50,8 +56,7 @@ def _check_tariff(db: Session, user: User, connection: Connection, tariff_id: uu
     tariff = db.query(Tariff).filter(Tariff.id == tariff_id).first()
     if not tariff:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tariff not found")
-    community = db.query(Community).filter(Community.id == connection.community_id).first()
-    if community and community.water_committee_id and tariff.water_committee_id != community.water_committee_id:
+    if tariff.water_committee_id != connection.water_committee_id:
         raise HTTPException(status_code=400, detail="That tariff belongs to a different water committee")
     if not can_see_committee(db, user, tariff.water_committee_id):
         raise forbid()
@@ -59,6 +64,7 @@ def _check_tariff(db: Session, user: User, connection: Connection, tariff_id: uu
 
 @router.get("/", response_model=list[ConnectionResponse])
 def list_connections(
+    water_committee_id: uuid.UUID | None = Query(None),
     community_id: uuid.UUID | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     search: str | None = Query(None),
@@ -75,6 +81,8 @@ def list_connections(
         .outerjoin(Community, Community.id == Connection.community_id)
     )
     query = scope_connections(db, current_user, query)
+    if water_committee_id:
+        query = query.filter(Connection.water_committee_id == water_committee_id)
     if community_id:
         query = query.filter(Connection.community_id == community_id)
     if status_filter:
@@ -95,10 +103,21 @@ def list_connections(
 def create_connection(
     payload: ConnectionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*ADMIN_ROLES)),
+    current_user: User = Depends(require_role(*MANAGE_ROLES)),
 ):
-    """Register a water account. Only administrators may open accounts."""
-    require_community(db, current_user, payload.community_id)
+    """Register a water account. Only administrators (committee level or above) open accounts."""
+    require_manage(current_user, EntityLevel.CONNECTION)
+    committee_id = payload.water_committee_id
+    if payload.community_id:
+        community = require_community(db, current_user, payload.community_id)
+        if committee_id and committee_id != community.water_committee_id:
+            raise HTTPException(status_code=400, detail="That community belongs to a different water committee")
+        committee_id = community.water_committee_id
+    if committee_id is None and parent_level(current_user) == EntityLevel.WATER_COMMITTEE:
+        committee_id = current_user.parent.water_committee_id
+    if committee_id is None:
+        raise HTTPException(status_code=400, detail="Choose the water committee this connection belongs to")
+    require_committee(db, current_user, committee_id)
     existing = (
         db.query(Connection)
         .filter(Connection.account_number == payload.account_number)
@@ -111,6 +130,7 @@ def create_connection(
         )
 
     data = payload.model_dump()
+    data["water_committee_id"] = committee_id
     serial_number = data.pop("meter_serial_number")
     brand = data.pop("meter_brand")
     initial_reading = data.pop("meter_initial_reading")
@@ -255,6 +275,12 @@ def update_connection(
     connection = require_connection(db, current_user, connection_id)
     data = payload.model_dump(exclude_unset=True)
     clear_tariff = data.pop("clear_tariff", False)
+    if data.pop("clear_community", False):
+        data["community_id"] = None
+    elif data.get("community_id"):
+        community = require_community(db, current_user, data["community_id"])
+        if community.water_committee_id != connection.water_committee_id:
+            raise HTTPException(status_code=400, detail="That community belongs to a different water committee")
     if clear_tariff:
         data["tariff_id"] = None
     elif data.get("tariff_id"):
@@ -271,9 +297,10 @@ def update_connection(
 def delete_connection(
     connection_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(*ADMIN_ROLES)),
+    current_user: User = Depends(require_role(*MANAGE_ROLES)),
 ):
     """Remove an account and everything recorded against it."""
+    require_manage(current_user, EntityLevel.CONNECTION)
     connection = require_connection(db, current_user, connection_id)
     meter_ids = [
         meter_id

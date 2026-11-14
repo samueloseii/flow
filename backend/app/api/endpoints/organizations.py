@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.partner import Partner
 from app.models.user import User, UserRole
+from app.services.scope import visible_organization_ids
 from app.schemas.partner import OrganizationCreate, OrganizationResponse, OrganizationUpdate
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
@@ -30,12 +31,9 @@ def list_organizations(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Organization)
-    if current_user.role is not UserRole.SUPER_ADMIN:
-        if not current_user.partner_id:
-            return []
-        query = query.join(Partner, Partner.organization_id == Organization.id).filter(
-            Partner.id == current_user.partner_id
-        )
+    ids = visible_organization_ids(db, current_user)
+    if ids is not None:
+        query = query.filter(Organization.id.in_(ids)) if ids else query.filter(False)
     return [_response(db, o) for o in query.order_by(Organization.name).all()]
 
 

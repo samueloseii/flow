@@ -31,5 +31,11 @@ class WaterCommittee(Base):
     communities: Mapped[list["Community"]] = relationship(  # noqa: F821
         back_populates="water_committee"
     )
-    users: Mapped[list["User"]] = relationship(back_populates="water_committee")  # noqa: F821
+    connections: Mapped[list["Connection"]] = relationship(  # noqa: F821
+        back_populates="water_committee"
+    )
+    expenses: Mapped[list["Expense"]] = relationship(back_populates="water_committee")  # noqa: F821
+    maintenance_records: Mapped[list["MaintenanceRecord"]] = relationship(  # noqa: F821
+        back_populates="water_committee"
+    )
     tariffs: Mapped[list["Tariff"]] = relationship(back_populates="water_committee")  # noqa: F821

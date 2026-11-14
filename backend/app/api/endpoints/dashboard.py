@@ -13,6 +13,8 @@ from app.models.maintenance import MaintenanceRecord, MaintenanceStatus
 from app.models.meter import Meter, MeterReading
 from app.models.partner import Partner
 from app.models.user import User, UserRole
+from app.models.water_committee import WaterCommittee
+from app.services.scope import require_partner
 from app.schemas.dashboard import CommunityDashboard, PartnerDashboard, SystemDashboard
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -83,16 +85,17 @@ def community_dashboard(
 def partner_dashboard(
     partner_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.PARTNER_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.EDITOR, UserRole.VIEWER)),
 ):
-    community_ids = db.query(Community.id).filter(Community.partner_id == partner_id).subquery()
-    total_communities = db.query(Community).filter(Community.partner_id == partner_id).count()
+    require_partner(db, current_user, partner_id)
+    committee_ids = db.query(WaterCommittee.id).filter(WaterCommittee.partner_id == partner_id).subquery()
+    total_communities = db.query(WaterCommittee).filter(WaterCommittee.partner_id == partner_id).count()
 
     connection_ids = db.query(Connection.id).filter(
-        Connection.community_id.in_(community_ids)
+        Connection.water_committee_id.in_(committee_ids)
     ).subquery()
     total_connections = db.query(Connection).filter(
-        Connection.community_id.in_(community_ids)
+        Connection.water_committee_id.in_(committee_ids)
     ).count()
 
     total_invoiced = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(

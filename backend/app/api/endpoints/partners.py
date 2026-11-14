@@ -5,17 +5,19 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
-from app.models.community import Community
+from app.models.water_committee import WaterCommittee
 from app.models.organization import Organization
 from app.models.partner import Partner
 from app.models.user import User, UserRole
+from app.services.scope import can_see_partner, require_manage, scope_partners
+from app.models.user_relation import EntityLevel
 from app.schemas.partner import PartnerCreate, PartnerResponse, PartnerUpdate
 
 router = APIRouter(prefix="/partners", tags=["partners"])
 
 
 def _response(db: Session, partner: Partner) -> PartnerResponse:
-    count = db.query(Community).filter(Community.partner_id == partner.id).count()
+    count = db.query(WaterCommittee).filter(WaterCommittee.partner_id == partner.id).count()
     return PartnerResponse(
         id=partner.id,
         name=partner.name,
@@ -36,9 +38,7 @@ def list_partners(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Partner)
-    if current_user.role is not UserRole.SUPER_ADMIN and current_user.partner_id:
-        query = query.filter(Partner.id == current_user.partner_id)
+    query = scope_partners(db, current_user, db.query(Partner))
     return [_response(db, p) for p in query.order_by(Partner.name).all()]
 
 
@@ -46,8 +46,9 @@ def list_partners(
 def create_partner(
     payload: PartnerCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
 ):
+    require_manage(current_user, EntityLevel.PARTNER)
     if db.query(Partner).filter(Partner.name == payload.name).first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -78,11 +79,13 @@ def update_partner(
     partner_id: uuid.UUID,
     payload: PartnerUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.PARTNER_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.EDITOR)),
 ):
     partner = db.query(Partner).filter(Partner.id == partner_id).first()
     if not partner:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner not found")
+    if not can_see_partner(db, current_user, partner_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Outside your area of responsibility")
     data = payload.model_dump(exclude_unset=True)
     if "organization_id" in data and current_user.role is not UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the system administrator moves partners between organizations")
@@ -97,18 +100,18 @@ def update_partner(
 def delete_partner(
     partner_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
 ):
+    require_manage(current_user, EntityLevel.PARTNER)
     partner = db.query(Partner).filter(Partner.id == partner_id).first()
     if not partner:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner not found")
-    if db.query(Community).filter(Community.partner_id == partner_id).count():
+    if not can_see_partner(db, current_user, partner_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Outside your area of responsibility")
+    if db.query(WaterCommittee).filter(WaterCommittee.partner_id == partner_id).count():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Delete the communities in this organization first",
+            detail="Delete this partner's water committees first",
         )
-    db.query(User).filter(User.partner_id == partner_id).update(
-        {User.partner_id: None}, synchronize_session=False
-    )
     db.delete(partner)
     db.commit()

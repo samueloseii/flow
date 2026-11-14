@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.models.connection import ConnectionStatus
+from app.models.connection import ConnectionStatus, ConnectionType
 from app.schemas.billing import InvoiceResponse, PaymentResponse
 from app.schemas.meter import MeterReadingResponse, MeterResponse
 
@@ -14,12 +14,16 @@ class ConnectionCreate(BaseModel):
     address: str | None = None
     phone: str | None = None
     members_count: int = 1
+    connection_type: ConnectionType = ConnectionType.HOUSEHOLD
     status: ConnectionStatus = ConnectionStatus.ACTIVE
     has_meter: bool = False
     latitude: float | None = None
     longitude: float | None = None
     notes: str | None = None
-    community_id: uuid.UUID
+    # The water committee the connection belongs to; defaults to the community's committee
+    # when only a community (grouping) is given.
+    water_committee_id: uuid.UUID | None = None
+    community_id: uuid.UUID | None = None
     tariff_id: uuid.UUID | None = None
     # A meter can be registered together with the account.
     meter_serial_number: str | None = None
@@ -32,6 +36,9 @@ class ConnectionUpdate(BaseModel):
     address: str | None = None
     phone: str | None = None
     members_count: int | None = None
+    connection_type: ConnectionType | None = None
+    community_id: uuid.UUID | None = None
+    clear_community: bool = False
     status: ConnectionStatus | None = None
     has_meter: bool | None = None
     latitude: float | None = None
@@ -48,13 +55,16 @@ class ConnectionResponse(BaseModel):
     address: str | None
     phone: str | None
     members_count: int
+    connection_type: ConnectionType
     status: ConnectionStatus
     has_meter: bool
     outstanding_balance: float
     latitude: float | None
     longitude: float | None
     notes: str | None
-    community_id: uuid.UUID
+    water_committee_id: uuid.UUID
+    water_committee_name: str | None = None
+    community_id: uuid.UUID | None = None
     tariff_id: uuid.UUID | None = None
     tariff_name: str | None = None
     created_at: datetime

@@ -10,7 +10,7 @@ from app.models.connection import Connection, ConnectionStatus
 from app.models.meter import Meter, MeterReading, MeterStatus
 from app.models.community import Community
 from app.models.user import User
-from app.services.scope import require_connection, visible_community_ids
+from app.services.scope import require_connection, scope_connections
 from app.schemas.meter import (
     MeterCreate,
     MeterReadingCreate,
@@ -32,9 +32,7 @@ def list_meters(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Meter).join(Connection, Connection.id == Meter.connection_id)
-    ids = visible_community_ids(db, current_user)
-    if ids is not None:
-        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
+    query = scope_connections(db, current_user, query)
     if connection_id:
         query = query.filter(Meter.connection_id == connection_id)
     return query.order_by(Meter.created_at.desc()).offset(skip).limit(limit).all()
@@ -50,13 +48,11 @@ def reading_context(
     query = (
         db.query(Connection, Meter, Community)
         .join(Meter, Meter.connection_id == Connection.id)
-        .join(Community, Community.id == Connection.community_id)
+        .outerjoin(Community, Community.id == Connection.community_id)
         .filter(Connection.status == ConnectionStatus.ACTIVE)
         .filter(Meter.status == MeterStatus.ACTIVE)
     )
-    ids = visible_community_ids(db, current_user)
-    if ids is not None:
-        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
+    query = scope_connections(db, current_user, query)
     if community_id:
         query = query.filter(Connection.community_id == community_id)
 
@@ -199,9 +195,7 @@ def list_readings(
         .join(Meter, Meter.id == MeterReading.meter_id)
         .join(Connection, Connection.id == Meter.connection_id)
     )
-    ids = visible_community_ids(db, current_user)
-    if ids is not None:
-        query = query.filter(Connection.community_id.in_(ids)) if ids else query.filter(False)
+    query = scope_connections(db, current_user, query)
     if meter_id:
         query = query.filter(MeterReading.meter_id == meter_id)
     return query.order_by(MeterReading.reading_date.desc()).offset(skip).limit(limit).all()

@@ -14,7 +14,8 @@ class ExpenseCreate(BaseModel):
     category: ExpenseCategory = ExpenseCategory.OTHER
     receipt_number: str | None = None
     notes: str | None = None
-    community_id: uuid.UUID
+    water_committee_id: uuid.UUID | None = None
+    community_id: uuid.UUID | None = None
 
 
 class ExpenseUpdate(BaseModel):
@@ -36,7 +37,8 @@ class ExpenseResponse(BaseModel):
     receipt_number: str | None
     recorded_by: str | None
     notes: str | None
-    community_id: uuid.UUID
+    water_committee_id: uuid.UUID
+    community_id: uuid.UUID | None = None
     created_at: datetime
     community_name: str | None = None
 

@@ -108,42 +108,38 @@ def generate_invoices(
     """Bill every active connection with readings in the period.
 
     Each connection is charged on its own tariff (or the committee's default tariff).
-    Communities without any tariff fall back to their fixed + per-m³ rates.
     The readings used are stamped with the bill so they can be traced later.
     """
     if payload.water_committee_id:
-        require_committee(db, current_user, payload.water_committee_id)
-        communities = (
-            db.query(Community)
-            .filter(Community.water_committee_id == payload.water_committee_id)
-            .all()
-        )
+        committee_id = payload.water_committee_id
+        community = None
     elif payload.community_id:
-        communities = [require_community(db, current_user, payload.community_id)]
+        community = require_community(db, current_user, payload.community_id)
+        committee_id = community.water_committee_id
     else:
-        raise HTTPException(status_code=400, detail="Choose a community or a water committee")
+        raise HTTPException(status_code=400, detail="Choose a water committee (or one of its communities)")
+    require_committee(db, current_user, committee_id)
 
     created: list[Invoice] = []
     skipped_existing = 0
     skipped_no_reading = 0
     skipped_no_tariff = 0
 
-    for community in communities:
-        default_tariff = None
-        if community.water_committee_id:
-            default_tariff = (
-                db.query(Tariff)
-                .filter(Tariff.water_committee_id == community.water_committee_id)
-                .filter(Tariff.is_default.is_(True))
-                .first()
-            )
-        connections = (
-            db.query(Connection)
-            .filter(Connection.community_id == community.id)
-            .filter(Connection.status == ConnectionStatus.ACTIVE)
-            .order_by(Connection.account_number)
-            .all()
-        )
+    default_tariff = (
+        db.query(Tariff)
+        .filter(Tariff.water_committee_id == committee_id)
+        .filter(Tariff.is_default.is_(True))
+        .first()
+    )
+    connection_query = (
+        db.query(Connection)
+        .filter(Connection.water_committee_id == committee_id)
+        .filter(Connection.status == ConnectionStatus.ACTIVE)
+    )
+    if community is not None:
+        connection_query = connection_query.filter(Connection.community_id == community.id)
+    connections = connection_query.order_by(Connection.account_number).all()
+    if True:
         for connection in connections:
             already = (
                 db.query(Invoice)
@@ -176,11 +172,6 @@ def generate_invoices(
                 fixed, variable, _blocks = tariff.charge_for(consumption)
                 currency = tariff.currency
                 note = f"Tariff: {tariff.name}"
-            elif community.tariff_fixed or community.tariff_per_m3:
-                fixed = community.tariff_fixed
-                variable = round(consumption * community.tariff_per_m3, 2)
-                currency = community.currency
-                note = None
             else:
                 skipped_no_tariff += 1
                 continue

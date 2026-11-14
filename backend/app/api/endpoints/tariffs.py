@@ -13,7 +13,7 @@ from app.services.scope import can_see_committee, forbid, require_committee, vis
 
 router = APIRouter(prefix="/tariffs", tags=["tariffs"])
 
-TARIFF_EDITORS = (UserRole.SUPER_ADMIN, UserRole.PARTNER_ADMIN, UserRole.COMMUNITY_ADMIN, UserRole.TREASURER)
+TARIFF_EDITORS = (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.EDITOR)
 
 
 def _response(db: Session, tariff: Tariff) -> TariffResponse:
