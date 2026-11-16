@@ -569,7 +569,7 @@ export default function BillingPage() {
                   className={inputClass}
                 >
                   <option value="cash">Cash</option>
-                  <option value="mobile_money">Mobile money</option>
+                  <option value="mobile_payment">Mobile money</option>
                   <option value="bank_transfer">Bank transfer</option>
                   <option value="other">Other</option>
                 </select>
