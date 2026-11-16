@@ -410,3 +410,52 @@ def test_organization_level_and_structure_tree(client, auth):
     assert [n["id"] for n in t_tree["nodes"]] == [committee["id"]]
     orgs = client.get(f"{API}/organizations/", headers=_login(client, email, "treasurer-pass")).json()
     assert [o["id"] for o in orgs] == [org["id"]]  # only the branch it belongs to
+
+def test_skipped_month_is_split_across_months(client, auth):
+    partner, committee, comm_a, *_ = _setup(client, auth)
+    r = client.post(
+        f"{API}/tariffs/",
+        json={"name": "Flat", "water_committee_id": committee["id"], "base_rate": 3.0,
+              "thresholds": [10], "rates": [0, 0.5], "is_default": True},
+        headers=auth,
+    )
+    assert r.status_code == 201, r.text
+    hh = client.post(
+        f"{API}/connections/",
+        json={"account_number": "S-1", "contact_name": "Skipped", "community_id": comm_a["id"],
+              "meter_serial_number": "S-M1", "meter_initial_reading": 0},
+        headers=auth,
+    ).json()
+    meter = client.get(f"{API}/meters/", params={"connection_id": hh["id"]}, headers=auth).json()[0]
+    now = datetime.now(timezone.utc)
+    # read 61 days ago, then skipped a month, read again now: 24 m³ over two months
+    for value, when in ((10, now - timedelta(days=61)), (34, now)):
+        r = client.post(
+            f"{API}/meters/readings",
+            json={"meter_id": meter["id"], "reading_value": value, "reading_date": when.isoformat()},
+            headers=auth,
+        )
+        assert r.status_code == 201, r.text
+    assert r.json().get("flag_reason")
+    r = client.post(
+        f"{API}/billing/invoices/generate",
+        json={"community_id": comm_a["id"], "billing_period_start": (now - timedelta(days=30)).isoformat(),
+              "billing_period_end": (now + timedelta(days=1)).isoformat(),
+              "due_date": (now + timedelta(days=15)).isoformat()},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    inv = r.json()["invoices"][0]
+    # two base rates, and 12 m³ per month -> 2 m³ over the 10 m³ base each: 2*3 + 2*(2*0.5) = 8
+    assert inv["fixed_charge"] == 6.0
+    assert inv["variable_charge"] == 2.0
+    assert "2 months" in inv["notes"]
+
+
+def test_expenses_maintenance_and_partner_dashboard_load(client, auth):
+    partner, committee, comm_a, *_ = _setup(client, auth)
+    assert client.get(f"{API}/expenses/", params={"water_committee_id": committee["id"]}, headers=auth).status_code == 200
+    assert client.get(f"{API}/expenses/summary", headers=auth).status_code == 200
+    assert client.get(f"{API}/maintenance/", headers=auth).status_code == 200
+    r = client.get(f"{API}/dashboard/partner/{partner['id']}", headers=auth)
+    assert r.status_code == 200, r.text

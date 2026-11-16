@@ -30,12 +30,17 @@ def _response(expense: Expense, community: Community | None) -> ExpenseResponse:
 
 def _filtered(
     db: Session,
+    user: User,
+    water_committee_id: uuid.UUID | None,
     community_id: uuid.UUID | None,
     category: str | None,
     date_from: datetime | None,
     date_to: datetime | None,
 ):
     query = db.query(Expense, Community).outerjoin(Community, Community.id == Expense.community_id)
+    visible = visible_committee_ids(db, user)
+    if visible is not None:
+        query = query.filter(Expense.water_committee_id.in_(visible))
     if water_committee_id:
         query = query.filter(Expense.water_committee_id == water_committee_id)
     if community_id:
@@ -80,7 +85,7 @@ def list_expenses(
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
     rows = (
-        _filtered(db, community_id, category, date_from, date_to)
+        _filtered(db, current_user, water_committee_id, community_id, category, date_from, date_to)
         .order_by(Expense.expense_date.desc())
         .offset(skip)
         .limit(limit)
@@ -98,7 +103,7 @@ def expense_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*ADMIN_ROLES)),
 ):
-    rows = _filtered(db, community_id, None, date_from, date_to).all()
+    rows = _filtered(db, current_user, water_committee_id, community_id, None, date_from, date_to).all()
     by_category: dict[str, float] = {}
     by_currency: dict[str, float] = {}
     total = 0.0

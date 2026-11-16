@@ -100,6 +100,28 @@ def list_invoices(
     return [_invoice_response(invoice, connection) for invoice, connection in rows]
 
 
+def _months_covered(db: Session, readings: list[MeterReading]) -> int:
+    """How many monthly rounds the billed readings span (1 = the usual single month).
+
+    Measured from the reading before the first billed one to the last billed one; a gap of
+    about 1.5 months or more counts as 2, and so on. Nothing is estimated: the treasurer
+    sees the split on the bill note.
+    """
+    first = min(readings, key=lambda r: r.reading_date)
+    last = max(readings, key=lambda r: r.reading_date)
+    previous = (
+        db.query(MeterReading)
+        .filter(MeterReading.meter_id == first.meter_id)
+        .filter(MeterReading.reading_date < first.reading_date)
+        .order_by(MeterReading.reading_date.desc())
+        .first()
+    )
+    if previous is None:
+        return 1
+    days = (last.reading_date - previous.reading_date).days
+    return max(1, round(days / 30.4))
+
+
 @router.post("/invoices/generate", response_model=InvoiceGenerateResult)
 def generate_invoices(
     payload: InvoiceGenerateRequest,
@@ -178,11 +200,27 @@ def generate_invoices(
                 fixed, variable = round(tariff.base_rate, 2), 0.0
                 note = f"Tariff: {tariff.name}. No meter reading in this period — base rate only"
             else:
-                fixed, variable, _blocks = tariff.charge_for(consumption)
-                billed_m3 = math.ceil(max(0.0, consumption) - 1e-9)
-                note = f"Tariff: {tariff.name}"
-                if billed_m3 != consumption:
-                    note += f". {consumption} m³ read, billed as {billed_m3} m³ (whole m³)"
+                months = _months_covered(db, readings)
+                if months > 1:
+                    # A reading after a skipped month covers several months: the base rate is
+                    # owed for each, and the consumption is split evenly between them.
+                    share = consumption / months
+                    fixed = variable = 0.0
+                    for _ in range(months):
+                        f, v, _blocks = tariff.charge_for(share)
+                        fixed += f
+                        variable += v
+                    fixed, variable = round(fixed, 2), round(variable, 2)
+                    note = (
+                        f"Tariff: {tariff.name}. Reading covers {months} months — "
+                        f"{consumption} m³ split as {round(share, 2)} m³ per month, base rate x{months}"
+                    )
+                else:
+                    fixed, variable, _blocks = tariff.charge_for(consumption)
+                    billed_m3 = math.ceil(max(0.0, consumption) - 1e-9)
+                    note = f"Tariff: {tariff.name}"
+                    if billed_m3 != consumption:
+                        note += f". {consumption} m³ read, billed as {billed_m3} m³ (whole m³)"
             currency = tariff.currency
             total = round(fixed + variable, 2)
             invoice = Invoice(
