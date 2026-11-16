@@ -459,3 +459,66 @@ def test_expenses_maintenance_and_partner_dashboard_load(client, auth):
     assert client.get(f"{API}/maintenance/", headers=auth).status_code == 200
     r = client.get(f"{API}/dashboard/partner/{partner['id']}", headers=auth)
     assert r.status_code == 200, r.text
+
+
+def test_payments_by_treasurer_not_operator_and_overdue(client, auth):
+    partner, committee, comm_a, *_ = _setup(client, auth)
+    client.post(
+        f"{API}/tariffs/",
+        json={"name": "Flat", "water_committee_id": committee["id"], "base_rate": 3.0,
+              "thresholds": [10], "rates": [0, 0.5], "is_default": True},
+        headers=auth,
+    )
+    hh = client.post(
+        f"{API}/connections/",
+        json={"account_number": "P-1", "contact_name": "Payer", "community_id": comm_a["id"],
+              "meter_serial_number": "P-M1", "meter_initial_reading": 0},
+        headers=auth,
+    ).json()
+    r = client.post(
+        f"{API}/auth/users",
+        json={"email": "wc2@test.org", "password": "password1", "full_name": "A", "role": "admin",
+              "parent_level": "water_committee", "parent_id": committee["id"]},
+        headers=auth,
+    )
+    assert r.status_code == 201, r.text
+    wc_auth = _login(client, "wc2@test.org", "password1")
+    for email, role in (("tr2@test.org", "editor"), ("op9@test.org", "operator")):
+        r = client.post(
+            f"{API}/auth/users",
+            json={"email": email, "password": "password1", "full_name": "x", "role": role},
+            headers=wc_auth,
+        )
+        assert r.status_code == 201, r.text
+    tr_auth = _login(client, "tr2@test.org", "password1")
+    op_auth = _login(client, "op9@test.org", "password1")
+
+    now = datetime.now(timezone.utc)
+    # a bill whose due date has already passed
+    r = client.post(
+        f"{API}/billing/invoices",
+        json={"connection_id": hh["id"], "billing_period_start": (now - timedelta(days=60)).isoformat(),
+              "billing_period_end": (now - timedelta(days=31)).isoformat(),
+              "due_date": (now - timedelta(days=10)).isoformat(), "consumption_m3": 5,
+              "fixed_charge": 3.0, "variable_charge": 0, "total_amount": 3.0, "currency": "USD"},
+        headers=auth,
+    )
+    assert r.status_code == 201, r.text
+    invoice = r.json()
+    listed = client.get(f"{API}/billing/invoices", params={"connection_id": hh["id"]}, headers=tr_auth).json()
+    assert listed[0]["status"] == "overdue"
+
+    payment = {"connection_id": hh["id"], "invoice_id": invoice["id"], "amount": 3.0,
+               "payment_date": now.isoformat(), "payment_method": "cash", "receipt_number": "R-1"}
+    assert client.post(f"{API}/billing/payments", json=payment, headers=op_auth).status_code == 403
+    r = client.post(f"{API}/billing/payments", json=payment, headers=tr_auth)
+    assert r.status_code == 201, r.text
+    listed = client.get(f"{API}/billing/invoices", params={"connection_id": hh["id"]}, headers=tr_auth).json()
+    assert listed[0]["status"] == "paid" and listed[0]["balance_due"] == 0
+    history = client.get(f"{API}/billing/payments", params={"connection_id": hh["id"]}, headers=tr_auth).json()
+    assert len(history) == 1 and history[0]["receipt_number"] == "R-1"
+
+    # the treasurer's dashboard shows its committee's figures
+    r = client.get(f"{API}/dashboard/system", headers=tr_auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["total_revenue"] == 3.0 and r.json()["total_connections"] == 1

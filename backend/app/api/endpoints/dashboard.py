@@ -13,8 +13,9 @@ from app.models.maintenance import MaintenanceRecord, MaintenanceStatus
 from app.models.meter import Meter, MeterReading
 from app.models.partner import Partner
 from app.models.user import User, UserRole
+from app.models.user_relation import UserRelation
 from app.models.water_committee import WaterCommittee
-from app.services.scope import require_partner
+from app.services.scope import require_partner, visible_committee_ids
 from app.schemas.dashboard import CommunityDashboard, PartnerDashboard, SystemDashboard
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -130,26 +131,45 @@ def partner_dashboard(
 @router.get("/system", response_model=SystemDashboard)
 def system_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+    current_user: User = Depends(get_current_user),
 ):
-    total_partners = db.query(Partner).count()
-    total_communities = db.query(Community).count()
-    total_connections = db.query(Connection).count()
-    total_users = db.query(User).count()
+    """Headline figures for whatever the signed-in account can see: the whole system for a
+    super admin, otherwise the account's organisation / partner / committee branch."""
+    visible = visible_committee_ids(db, current_user)
+    committees = db.query(WaterCommittee.id)
+    connections = db.query(Connection.id)
+    communities = db.query(Community)
+    partners = db.query(Partner)
+    users = db.query(User)
+    if visible is not None:
+        committees = committees.filter(WaterCommittee.id.in_(visible))
+        connections = connections.filter(Connection.water_committee_id.in_(visible))
+        communities = communities.filter(Community.water_committee_id.in_(visible))
+        partner_ids = db.query(WaterCommittee.partner_id).filter(WaterCommittee.id.in_(visible)).subquery()
+        partners = partners.filter(Partner.id.in_(partner_ids))
+        users = users.join(UserRelation, UserRelation.user_id == User.id).filter(
+            UserRelation.water_committee_id.in_(visible)
+        ).distinct()
+    connection_ids = connections.subquery()
 
-    total_invoiced = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).scalar()
-    total_paid = db.query(func.coalesce(func.sum(Payment.amount), 0)).scalar()
+    total_invoiced = db.query(func.coalesce(func.sum(Invoice.total_amount), 0)).filter(
+        Invoice.connection_id.in_(connection_ids)
+    ).scalar()
+    total_paid = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+        Payment.connection_id.in_(connection_ids)
+    ).scalar()
     collection_rate = (total_paid / total_invoiced * 100) if total_invoiced > 0 else 0.0
 
     total_arrears = db.query(func.coalesce(func.sum(Invoice.balance_due), 0)).filter(
+        Invoice.connection_id.in_(connection_ids),
         Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PARTIAL, InvoiceStatus.OVERDUE]),
     ).scalar()
 
     return SystemDashboard(
-        total_partners=total_partners,
-        total_communities=total_communities,
-        total_connections=total_connections,
-        total_users=total_users,
+        total_partners=partners.count(),
+        total_communities=communities.count(),
+        total_connections=connections.count(),
+        total_users=users.count(),
         overall_collection_rate=round(collection_rate, 1),
         total_revenue=float(total_paid),
         total_arrears=float(total_arrears),
