@@ -1,6 +1,6 @@
 import math
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -54,6 +54,25 @@ def _invoice_response(invoice: Invoice, connection: Connection | None) -> Invoic
     return response
 
 
+def _mark_overdue(db: Session, rows) -> None:
+    """An unpaid bill past its due date is overdue; refresh this whenever bills are listed."""
+    now = datetime.now(timezone.utc)
+    changed = False
+    for invoice, _connection in rows:
+        due = invoice.due_date
+        if due is not None and due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+        if (
+            invoice.status in (InvoiceStatus.PENDING, InvoiceStatus.PARTIAL)
+            and due is not None
+            and due < now
+        ):
+            invoice.status = InvoiceStatus.OVERDUE
+            changed = True
+    if changed:
+        db.commit()
+
+
 @router.get("/invoices", response_model=list[InvoiceResponse])
 def list_invoices(
     connection_id: uuid.UUID | None = Query(None),
@@ -97,6 +116,7 @@ def list_invoices(
         .limit(limit)
         .all()
     )
+    _mark_overdue(db, rows)
     return [_invoice_response(invoice, connection) for invoice, connection in rows]
 
 

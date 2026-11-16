@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DollarSign, FilePlus2, Printer, Receipt, Search, Trash2 } from 'lucide-react'
 import api from '../../services/api'
+import { useAuth } from '../../contexts/AuthContext'
 import {
   Badge,
   Card,
@@ -66,6 +67,9 @@ function defaultPeriod() {
 
 export default function BillingPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canRecord = ['super_admin', 'admin', 'editor'].includes(user?.role ?? '')
+  const canDelete = ['super_admin', 'admin'].includes(user?.role ?? '')
   const [tab, setTab] = useState<'invoices' | 'payments'>('invoices')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
@@ -84,7 +88,7 @@ export default function BillingPage() {
   const [genForm, setGenForm] = useState({ community_id: '', ...defaultPeriod() })
 
   const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null)
-  const [payForm, setPayForm] = useState({ amount: '', receipt_number: '', method: 'cash' })
+  const [payForm, setPayForm] = useState({ amount: '', receipt_number: '', method: 'cash', date: isoDate(new Date()) })
   const [payError, setPayError] = useState('')
   const [payingBusy, setPayingBusy] = useState(false)
 
@@ -179,7 +183,7 @@ export default function BillingPage() {
         amount: Number(payForm.amount),
         currency: payingInvoice.currency,
         payment_method: payForm.method,
-        payment_date: new Date().toISOString(),
+        payment_date: new Date(payForm.date).toISOString(),
         receipt_number: payForm.receipt_number || null,
         connection_id: payingInvoice.connection_id,
         invoice_id: payingInvoice.id,
@@ -196,6 +200,8 @@ export default function BillingPage() {
 
   const outstanding = invoices.reduce((sum, inv) => sum + inv.balance_due, 0)
   const unpaidCount = invoices.filter((inv) => inv.balance_due > 0).length
+  const overdueCount = invoices.filter((inv) => inv.status === 'overdue').length
+  const collected = payments.reduce((sum, p) => sum + p.amount, 0)
   const billedConsumption = invoices.reduce((sum, inv) => sum + inv.consumption_m3, 0)
 
   return (
@@ -219,9 +225,14 @@ export default function BillingPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3 mb-6">
-        <StatCard label="Bills shown" value={invoices.length} />
-        <StatCard label="Unpaid bills" value={unpaidCount} tone={unpaidCount ? 'warning' : 'positive'} />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <StatCard label="Collected" value={collected.toFixed(2)} hint={`${payments.length} payments`} tone="positive" />
+        <StatCard
+          label="Unpaid bills"
+          value={unpaidCount}
+          hint={overdueCount ? `${overdueCount} overdue` : 'none overdue'}
+          tone={overdueCount ? 'danger' : unpaidCount ? 'warning' : 'positive'}
+        />
         <StatCard
           label="Outstanding"
           value={outstanding.toFixed(2)}
@@ -348,7 +359,7 @@ export default function BillingPage() {
                       <Badge value={inv.status} />
                     </td>
                     <td className="px-6 py-4 text-right whitespace-nowrap">
-                      {inv.balance_due > 0 && (
+                      {canRecord && inv.balance_due > 0 && (
                         <button
                           onClick={() => {
                             setPayingInvoice(inv)
@@ -356,6 +367,7 @@ export default function BillingPage() {
                               amount: inv.balance_due.toFixed(2),
                               receipt_number: '',
                               method: 'cash',
+                              date: isoDate(new Date()),
                             })
                             setPayError('')
                           }}
@@ -371,13 +383,13 @@ export default function BillingPage() {
                       >
                         <Printer className="h-4 w-4" />
                       </button>
-                      <button
+                      {canDelete && <button
                         onClick={() => deleteInvoice(inv)}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                         title="Delete bill"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -424,13 +436,13 @@ export default function BillingPage() {
                       {formatMoney(p.currency, p.amount)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
+                      {canDelete && <button
                         onClick={() => deletePayment(p)}
                         className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded"
                         title="Delete payment"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -530,7 +542,16 @@ export default function BillingPage() {
                 {payError}
               </div>
             )}
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Date paid">
+                <input
+                  type="date"
+                  required
+                  value={payForm.date}
+                  onChange={(e) => setPayForm({ ...payForm, date: e.target.value })}
+                  className={inputClass}
+                />
+              </Field>
               <Field label={`Amount (${payingInvoice.currency})`}>
                 <input
                   type="number"
