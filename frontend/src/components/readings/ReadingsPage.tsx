@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Gauge, Upload } from 'lucide-react'
 import api from '../../services/api'
 import {
-  Badge, Card, EmptyState, Field, Modal, PageHeader, Spinner, formatDate,
+  Badge, Card, EmptyState, Field, Modal, PageHeader, Spinner, formatDateTime,
   inputClass, primaryButtonClass, secondaryButtonClass,
 } from '../ui'
 
@@ -111,7 +111,7 @@ export default function ReadingsPage() {
             <tbody className="divide-y divide-gray-100">
               {shown.map((r) => (
                 <tr key={r.id} className={r.flag_reason ? 'bg-amber-50/40' : ''}>
-                  <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{formatDate(r.reading_date)}</td>
+                  <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{formatDateTime(r.reading_date)}</td>
                   <td className="px-4 py-2"><Link to={`/connections/${r.connection_id}`} className="text-primary-700 hover:underline">{r.account_number}</Link><span className="text-gray-500"> · {r.contact_name}</span></td>
                   <td className="px-4 py-2 text-gray-600">{r.community_name}</td>
                   <td className="px-4 py-2 text-gray-600 font-mono text-xs">{r.serial_number}</td>

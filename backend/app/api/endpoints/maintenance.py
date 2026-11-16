@@ -55,6 +55,9 @@ def list_maintenance(
     query = db.query(MaintenanceRecord, Community).outerjoin(
         Community, Community.id == MaintenanceRecord.community_id
     )
+    visible = visible_committee_ids(db, current_user)
+    if visible is not None:
+        query = query.filter(MaintenanceRecord.water_committee_id.in_(visible))
     if water_committee_id:
         query = query.filter(MaintenanceRecord.water_committee_id == water_committee_id)
     if community_id:

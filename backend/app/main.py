@@ -47,7 +47,6 @@ def attach_partners_to_organization():
     """Partners created before the organization level existed get a default organization."""
     from app.db.session import SessionLocal
     from app.models.organization import Organization
-    from app.models.partner import Partner
 
     db = SessionLocal()
     try:

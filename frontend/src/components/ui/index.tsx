@@ -180,3 +180,8 @@ export function formatDate(value: string | null | undefined) {
   if (!value) return '—'
   return new Date(value).toLocaleDateString()
 }
+
+export function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+}

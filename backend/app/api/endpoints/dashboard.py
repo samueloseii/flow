@@ -112,7 +112,7 @@ def partner_dashboard(
     ).scalar()
 
     pending_maintenance = db.query(MaintenanceRecord).filter(
-        MaintenanceRecord.community_id.in_(community_ids),
+        MaintenanceRecord.water_committee_id.in_(committee_ids),
         MaintenanceRecord.status.in_([MaintenanceStatus.REPORTED, MaintenanceStatus.IN_PROGRESS]),
     ).count()
 
