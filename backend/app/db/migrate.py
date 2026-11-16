@@ -34,6 +34,10 @@ DATA_STATEMENTS = (
     "ALTER TABLE connections ADD COLUMN IF NOT EXISTS connection_type connectiontype DEFAULT 'HOUSEHOLD'",
     "ALTER TABLE connections ADD COLUMN IF NOT EXISTS water_committee_id UUID REFERENCES water_committees(id)",
     "ALTER TABLE connections ALTER COLUMN community_id DROP NOT NULL",
+    # Communities created before committees were required: when there is exactly
+    # one committee it is the only possible owner.
+    "UPDATE communities SET water_committee_id = (SELECT id FROM water_committees) "
+    "WHERE water_committee_id IS NULL AND (SELECT count(*) FROM water_committees) = 1",
     "UPDATE connections SET water_committee_id = c.water_committee_id FROM communities c "
     "WHERE connections.community_id = c.id AND connections.water_committee_id IS NULL",
     "ALTER TABLE expenses ADD COLUMN IF NOT EXISTS water_committee_id UUID REFERENCES water_committees(id)",
@@ -77,6 +81,13 @@ DATA_STATEMENTS = (
     "UPDATE users SET role = 'VIEWER' WHERE role::text = 'READER'",
     "UPDATE users SET role = 'VIEWER' WHERE role::text = 'OPERATOR' "
     "AND id IN (SELECT user_id FROM user_relations WHERE relation_type = 'PARENT' AND water_committee_id IS NULL)",
+    # Accounts whose old scope gave no committee: with exactly one committee, use it.
+    "INSERT INTO user_relations (id, relation_type, access_all_children, user_id, water_committee_id) "
+    "SELECT gen_random_uuid(), 'PARENT', "
+    "NOT EXISTS (SELECT 1 FROM user_relations r2 WHERE r2.user_id = u.id AND r2.relation_type = 'CHILD'), "
+    "u.id, (SELECT id FROM water_committees) FROM users u "
+    "WHERE u.role::text <> 'SUPER_ADMIN' AND (SELECT count(*) FROM water_committees) = 1 "
+    "AND NOT EXISTS (SELECT 1 FROM user_relations r WHERE r.user_id = u.id AND r.relation_type = 'PARENT')",
     # The old scope columns are no longer read; drop them so they cannot drift.
     "ALTER TABLE users DROP COLUMN IF EXISTS partner_id",
     "ALTER TABLE users DROP COLUMN IF EXISTS water_committee_id",
