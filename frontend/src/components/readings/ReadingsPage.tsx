@@ -17,9 +17,9 @@ interface Reading {
   is_estimated: boolean
   recorded_by: string | null
   serial_number: string
-  household_id: string
+  connection_id: string
   account_number: string
-  head_of_household: string
+  contact_name: string
   community_id: string
   community_name: string
   water_committee_id: string | null
@@ -39,7 +39,7 @@ export default function ReadingsPage() {
   const [importCommunity, setImportCommunity] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState<{ created_households: number; created_meters: number; errors: { row: number; message: string }[] } | null>(null)
+  const [importResult, setImportResult] = useState<{ created_connections: number; created_meters: number; errors: { row: number; message: string }[] } | null>(null)
   const [importError, setImportError] = useState('')
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function ReadingsPage() {
 
   const visibleCommunities = filters.water_committee_id ? communities.filter((c) => c.water_committee_id === filters.water_committee_id) : communities
   const term = filters.search.trim().toLowerCase()
-  const shown = term ? readings.filter((r) => r.account_number.toLowerCase().includes(term) || r.head_of_household.toLowerCase().includes(term) || r.serial_number.toLowerCase().includes(term)) : readings
+  const shown = term ? readings.filter((r) => r.account_number.toLowerCase().includes(term) || r.contact_name.toLowerCase().includes(term) || r.serial_number.toLowerCase().includes(term)) : readings
 
   async function runImport(e: FormEvent) {
     e.preventDefault()
@@ -83,7 +83,7 @@ export default function ReadingsPage() {
       <PageHeader
         title="Meter readings"
         subtitle="Every reading as recorded in the field, and the bill each one went into"
-        actions={<button onClick={() => { setImportResult(null); setImportError(''); setFile(null); setImportCommunity(communities[0]?.id ?? ''); setShowImport(true) }} className={secondaryButtonClass}><Upload className="h-4 w-4" />Import households (CSV)</button>}
+        actions={<button onClick={() => { setImportResult(null); setImportError(''); setFile(null); setImportCommunity(communities[0]?.id ?? ''); setShowImport(true) }} className={secondaryButtonClass}><Upload className="h-4 w-4" />Import connections (CSV)</button>}
       />
       <Card className="mb-4">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
@@ -107,12 +107,12 @@ export default function ReadingsPage() {
       ) : (
         <Card className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Household</th><th className="px-4 py-3">Community</th><th className="px-4 py-3">Meter</th><th className="px-4 py-3 text-right">Previous</th><th className="px-4 py-3 text-right">Reading</th><th className="px-4 py-3 text-right">Used m³</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Recorded by</th><th className="px-4 py-3">Bill</th></tr></thead>
+            <thead className="bg-gray-50 text-left text-xs text-gray-500"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Connection</th><th className="px-4 py-3">Community</th><th className="px-4 py-3">Meter</th><th className="px-4 py-3 text-right">Previous</th><th className="px-4 py-3 text-right">Reading</th><th className="px-4 py-3 text-right">Used m³</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Recorded by</th><th className="px-4 py-3">Bill</th></tr></thead>
             <tbody className="divide-y divide-gray-100">
               {shown.map((r) => (
                 <tr key={r.id} className={r.flag_reason ? 'bg-amber-50/40' : ''}>
                   <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{formatDate(r.reading_date)}</td>
-                  <td className="px-4 py-2"><Link to={`/households/${r.household_id}`} className="text-primary-700 hover:underline">{r.account_number}</Link><span className="text-gray-500"> · {r.head_of_household}</span></td>
+                  <td className="px-4 py-2"><Link to={`/connections/${r.connection_id}`} className="text-primary-700 hover:underline">{r.account_number}</Link><span className="text-gray-500"> · {r.contact_name}</span></td>
                   <td className="px-4 py-2 text-gray-600">{r.community_name}</td>
                   <td className="px-4 py-2 text-gray-600 font-mono text-xs">{r.serial_number}</td>
                   <td className="px-4 py-2 text-right text-gray-600">{r.previous_value}</td>
@@ -129,9 +129,9 @@ export default function ReadingsPage() {
       )}
 
       {showImport && (
-        <Modal title="Import households from CSV" onClose={() => setShowImport(false)}>
+        <Modal title="Import connections from CSV" onClose={() => setShowImport(false)}>
           <form onSubmit={runImport} className="space-y-4">
-            <p className="text-sm text-gray-600">Columns: <code>account_number, head_of_household</code> (required), <code>address, phone, members_count, meter_serial_number, meter_brand, meter_initial_reading, notes</code> (optional). Nothing is saved if any row has a problem.</p>
+            <p className="text-sm text-gray-600">Columns: <code>account_number, contact_name</code> (required), <code>address, phone, members_count, meter_serial_number, meter_brand, meter_initial_reading, notes</code> (optional). Nothing is saved if any row has a problem.</p>
             <Field label="Community">
               <select className={inputClass} value={importCommunity} onChange={(e) => setImportCommunity(e.target.value)} required>
                 {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -146,7 +146,7 @@ export default function ReadingsPage() {
               </div>
             )}
             {importResult && importResult.errors.length === 0 && (
-              <p className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">Imported {importResult.created_households} households and {importResult.created_meters} meters.</p>
+              <p className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">Imported {importResult.created_connections} connections and {importResult.created_meters} meters.</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className={secondaryButtonClass} onClick={() => setShowImport(false)}>Close</button>

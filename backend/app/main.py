@@ -9,12 +9,12 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.bootstrap import bootstrap
-from app.db.migrate import run_migrations
+from app.db.migrate import run_migrations, run_pre_migrations
 from app.db.session import engine
 from app.models import (  # noqa: F401  — ensure all models are registered
     Community,
     Expense,
-    Household,
+    Connection,
     Invoice,
     MaintenanceRecord,
     Meter,
@@ -68,6 +68,7 @@ def attach_partners_to_organization():
 
 @app.on_event("startup")
 def on_startup():
+    run_pre_migrations(engine)
     Base.metadata.create_all(bind=engine)
     run_migrations(engine)
     bootstrap()

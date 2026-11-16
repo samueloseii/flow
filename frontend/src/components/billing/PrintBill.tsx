@@ -4,7 +4,7 @@ import { Droplets, Printer } from 'lucide-react'
 import api from '../../services/api'
 
 interface BillDetail {
-  household_name: string
+  connection_name: string
   account_number: string
   community_name: string
   country: string
@@ -82,7 +82,7 @@ export default function PrintBill() {
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div>
             <p className="text-xs text-gray-500">Bill To</p>
-            <p className="font-semibold">{bill.household_name}</p>
+            <p className="font-semibold">{bill.connection_name}</p>
             <p className="text-sm text-gray-600">Account: {bill.account_number}</p>
           </div>
           <div className="text-right">

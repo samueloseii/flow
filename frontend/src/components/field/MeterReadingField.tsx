@@ -5,9 +5,9 @@ import api from '../../services/api'
 import { saveOfflineReading, getPendingReadings } from '../../services/offlineStore'
 
 interface ReadingContext {
-  household_id: string
+  connection_id: string
   account_number: string
-  head_of_household: string
+  contact_name: string
   address: string | null
   community_id: string
   meter_id: string
@@ -37,7 +37,7 @@ function warningFor(target: ReadingContext, value: number): string {
   }
   const average = target.avg_consumption_m3
   if (average > 0 && consumption > average * HIGH_CONSUMPTION_RATIO) {
-    return `Consumption of ${consumption.toFixed(1)} m³ is well above this household's usual ${average.toFixed(
+    return `Consumption of ${consumption.toFixed(1)} m³ is well above this connection's usual ${average.toFixed(
       1,
     )} m³. Re-read the dial or note a possible leak.`
   }
@@ -73,13 +73,13 @@ export default function MeterReadingField({ onBack }: Props) {
   useEffect(() => {
     api
       .get('/meters/reading-context', {
-        params: user?.community_id ? { community_id: user.community_id } : {},
+        params: {},
       })
       .then((res) => setTargets(res.data))
       .catch(() => setTargets([]))
-  }, [user?.community_id])
+  }, [user?.id])
 
-  const target = targets.find((t) => t.household_id === selected) || null
+  const target = targets.find((t) => t.connection_id === selected) || null
   const value = parseFloat(readingValue)
   const hasValue = readingValue !== '' && !Number.isNaN(value)
   const warning = target && hasValue ? warningFor(target, value) : ''
@@ -112,12 +112,12 @@ export default function MeterReadingField({ onBack }: Props) {
 
     setTargets((prev) =>
       prev.map((t) =>
-        t.household_id === target.household_id && value >= t.last_reading_value
+        t.connection_id === target.connection_id && value >= t.last_reading_value
           ? { ...t, last_reading_value: value, last_reading_date: reading.reading_date }
           : t,
       ),
     )
-    setSaved((prev) => [...prev, target.household_id])
+    setSaved((prev) => [...prev, target.connection_id])
     setSelected('')
     setReadingValue('')
     setNotes('')
@@ -153,7 +153,7 @@ export default function MeterReadingField({ onBack }: Props) {
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Household</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Connection</label>
         <select
           value={selected}
           onChange={(e) => {
@@ -163,16 +163,16 @@ export default function MeterReadingField({ onBack }: Props) {
           }}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         >
-          <option value="">— Choose household —</option>
+          <option value="">— Choose connection —</option>
           {targets.map((t) => (
-            <option key={t.household_id} value={t.household_id}>
-              {t.account_number} — {t.head_of_household} {saved.includes(t.household_id) ? '✓' : ''}
+            <option key={t.connection_id} value={t.connection_id}>
+              {t.account_number} — {t.contact_name} {saved.includes(t.connection_id) ? '✓' : ''}
             </option>
           ))}
         </select>
         {targets.length === 0 && (
           <p className="text-sm text-gray-500 mt-2">
-            No metered households assigned yet. Ask your administrator to register them.
+            No metered connections assigned yet. Ask your administrator to register them.
           </p>
         )}
       </div>
@@ -266,15 +266,15 @@ export default function MeterReadingField({ onBack }: Props) {
         <div className="mt-4">
           <h3 className="text-sm font-medium text-gray-700 mb-2">Recorded this session</h3>
           <div className="space-y-1">
-            {saved.map((householdId, index) => {
-              const item = targets.find((t) => t.household_id === householdId)
+            {saved.map((connectionId, index) => {
+              const item = targets.find((t) => t.connection_id === connectionId)
               return (
                 <div
-                  key={`${householdId}-${index}`}
+                  key={`${connectionId}-${index}`}
                   className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2"
                 >
                   <Check className="h-4 w-4" />
-                  {item?.account_number} — {item?.head_of_household}
+                  {item?.account_number} — {item?.contact_name}
                 </div>
               )
             })}

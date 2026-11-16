@@ -64,8 +64,11 @@ class MaintenanceRecord(Base):
     reported_via_whatsapp: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    community_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("communities.id")
+    water_committee_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("water_committees.id"), index=True
+    )
+    community_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("communities.id"), nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -77,4 +80,5 @@ class MaintenanceRecord(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    community: Mapped["Community"] = relationship(back_populates="maintenance_records")  # noqa: F821
+    water_committee: Mapped["WaterCommittee"] = relationship(back_populates="maintenance_records")  # noqa: F821
+    community: Mapped["Community | None"] = relationship()  # noqa: F821

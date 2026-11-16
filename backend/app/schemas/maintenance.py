@@ -21,7 +21,8 @@ class MaintenanceCreate(BaseModel):
     reported_by: str | None = None
     reported_via_whatsapp: bool = False
     notes: str | None = None
-    community_id: uuid.UUID
+    water_committee_id: uuid.UUID | None = None
+    community_id: uuid.UUID | None = None
 
 
 class MaintenanceUpdate(BaseModel):
@@ -48,7 +49,8 @@ class MaintenanceResponse(BaseModel):
     reported_via_whatsapp: bool
     resolved_by: str | None
     notes: str | None
-    community_id: uuid.UUID
+    water_committee_id: uuid.UUID
+    community_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
     community_name: str | None = None

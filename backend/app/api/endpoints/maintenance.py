@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import ADMIN_ROLES, READING_ROLES, get_current_user, require_role
 from app.db.session import get_db
 from app.models.community import Community
+from app.services.scope import require_committee, visible_committee_ids
 from app.models.maintenance import MaintenanceRecord, MaintenanceStatus
 from app.models.user import User
 from app.schemas.maintenance import MaintenanceCreate, MaintenanceResponse, MaintenanceUpdate
@@ -21,8 +22,27 @@ def _response(record: MaintenanceRecord, community: Community | None) -> Mainten
     return response
 
 
+def _resolve_committee(db: Session, user: User, water_committee_id, community_id):
+    """Expenses and maintenance belong to the water committee; a community is an optional grouping."""
+    community = db.query(Community).filter(Community.id == community_id).first() if community_id else None
+    if community_id and not community:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Community not found")
+    committee_id = water_committee_id or (community.water_committee_id if community else None)
+    if committee_id is None:
+        rel = user.parent
+        if rel is not None and rel.water_committee_id:
+            committee_id = rel.water_committee_id
+    if committee_id is None:
+        raise HTTPException(status_code=400, detail="Choose the water committee")
+    if community and community.water_committee_id != committee_id:
+        raise HTTPException(status_code=400, detail="That community belongs to a different water committee")
+    require_committee(db, user, committee_id)
+    return committee_id, community
+
+
 @router.get("/", response_model=list[MaintenanceResponse])
 def list_maintenance(
+    water_committee_id: uuid.UUID | None = Query(None),
     community_id: uuid.UUID | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     priority: str | None = Query(None),
@@ -35,6 +55,8 @@ def list_maintenance(
     query = db.query(MaintenanceRecord, Community).outerjoin(
         Community, Community.id == MaintenanceRecord.community_id
     )
+    if water_committee_id:
+        query = query.filter(MaintenanceRecord.water_committee_id == water_committee_id)
     if community_id:
         query = query.filter(MaintenanceRecord.community_id == community_id)
     if status_filter:
@@ -59,7 +81,10 @@ def create_maintenance(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*READING_ROLES)),
 ):
-    record = MaintenanceRecord(**payload.model_dump())
+    committee_id, _community = _resolve_committee(db, current_user, payload.water_committee_id, payload.community_id)
+    data = payload.model_dump()
+    data["water_committee_id"] = committee_id
+    record = MaintenanceRecord(**data)
     if not record.reported_by:
         record.reported_by = current_user.full_name
     db.add(record)

@@ -15,11 +15,11 @@ def _meter(client, auth) -> str:
         json={"name": "Test community", "country": "EC", "water_committee_id": committee["id"]},
         headers=auth,
     ).json()
-    household = client.post(
-        f"{API}/households/",
+    connection = client.post(
+        f"{API}/connections/",
         json={
             "account_number": "A-001",
-            "head_of_household": "Field tester",
+            "contact_name": "Field tester",
             "community_id": community["id"],
             "meter_serial_number": "SN-001",
             "meter_initial_reading": 100.0,
@@ -27,7 +27,7 @@ def _meter(client, auth) -> str:
         headers=auth,
     ).json()
     meters = client.get(
-        f"{API}/meters/", params={"household_id": household["id"]}, headers=auth
+        f"{API}/meters/", params={"connection_id": connection["id"]}, headers=auth
     ).json()
     return meters[0]["id"]
 

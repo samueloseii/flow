@@ -1,14 +1,14 @@
 """Prepare a production database: create tables and the first administrator.
 
 No sample data is created. Everything else — organizations, communities,
-households, users — is entered by the administrator inside the app.
+connections, users — is entered by the administrator inside the app.
 """
 
 import os
 
 from app.core.security import get_password_hash
 from app.db.base import Base
-from app.db.migrate import run_migrations
+from app.db.migrate import run_migrations, run_pre_migrations
 from app.db.session import SessionLocal, engine
 from app.models.user import User, UserRole
 
@@ -17,6 +17,7 @@ DEFAULT_ADMIN_NAME = "Administrator"
 
 
 def bootstrap() -> None:
+    run_pre_migrations(engine)
     Base.metadata.create_all(bind=engine)
     run_migrations(engine)
     db = SessionLocal()

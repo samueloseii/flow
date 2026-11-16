@@ -15,7 +15,7 @@ class InvoiceCreate(BaseModel):
     total_amount: float = 0.0
     currency: str = "USD"
     due_date: datetime
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     notes: str | None = None
 
 
@@ -35,9 +35,9 @@ class InvoiceResponse(BaseModel):
     due_date: datetime
     months_overdue: int
     notes: str | None
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     created_at: datetime
-    household_name: str | None = None
+    connection_name: str | None = None
     account_number: str | None = None
     community_id: uuid.UUID | None = None
     tariff_name: str | None = None
@@ -70,7 +70,7 @@ class PaymentCreate(BaseModel):
     receipt_number: str | None = None
     recorded_by: str | None = None
     notes: str | None = None
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     invoice_id: uuid.UUID | None = None
 
 
@@ -83,10 +83,10 @@ class PaymentResponse(BaseModel):
     receipt_number: str | None
     recorded_by: str | None
     notes: str | None
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     invoice_id: uuid.UUID | None
     created_at: datetime
-    household_name: str | None = None
+    connection_name: str | None = None
     account_number: str | None = None
     invoice_number: str | None = None
 

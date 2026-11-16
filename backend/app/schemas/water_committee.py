@@ -35,7 +35,7 @@ class WaterCommitteeResponse(BaseModel):
     created_at: datetime
     partner_name: str | None = None
     community_count: int = 0
-    household_count: int = 0
+    connection_count: int = 0
 
     class Config:
         from_attributes = True

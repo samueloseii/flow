@@ -103,7 +103,7 @@ private fun ReadingRow(reading: ReadingEntity) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(reading.headOfHousehold, fontWeight = FontWeight.SemiBold)
+                Text(reading.contactName, fontWeight = FontWeight.SemiBold)
                 Text(
                     label,
                     color = color,

@@ -12,7 +12,7 @@ class MonthlyPoint(BaseModel):
     expenses: float
     net: float
     cash_position: float
-    households_read: int
+    connections_read: int
     reading_coverage: float
     issues_reported: int
     issues_resolved: int
@@ -26,8 +26,8 @@ class AnalyticsTotals(BaseModel):
     net_balance: float
     collection_rate: float
     consumption_m3: float
-    households: int
-    metered_households: int
+    connections: int
+    metered_connections: int
     open_maintenance: int
 
 
@@ -38,9 +38,9 @@ class AgingBucket(BaseModel):
 
 
 class TopConsumer(BaseModel):
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     account_number: str
-    head_of_household: str
+    contact_name: str
     consumption_m3: float
 
 

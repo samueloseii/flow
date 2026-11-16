@@ -58,11 +58,11 @@ class ReadingRepository(
         val rows = api.readingContext().map {
             MeterEntity(
                 meterId = it.meterId,
-                householdId = it.householdId,
+                connectionId = it.connectionId,
                 accountNumber = it.accountNumber,
-                headOfHousehold = it.headOfHousehold,
+                contactName = it.contactName,
                 address = it.address,
-                communityId = it.communityId,
+                communityId = it.communityId ?: "",
                 serialNumber = it.serialNumber,
                 lastReadingValue = it.lastReadingValue,
                 lastReadingDate = it.lastReadingDate,
@@ -91,7 +91,7 @@ class ReadingRepository(
             clientId = UUID.randomUUID().toString(),
             meterId = meter.meterId,
             accountNumber = meter.accountNumber,
-            headOfHousehold = meter.headOfHousehold,
+            contactName = meter.contactName,
             readingValue = value,
             previousValue = meter.lastReadingValue,
             readingDate = isoNow(now),

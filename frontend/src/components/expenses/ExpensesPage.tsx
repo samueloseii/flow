@@ -1,7 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Plus, Trash2, Wallet } from 'lucide-react'
 import api from '../../services/api'
-import { useAuth } from '../../contexts/AuthContext'
 import {
   Badge,
   Card,
@@ -47,7 +46,6 @@ interface Community {
 const categories = ['maintenance', 'administrative', 'other']
 
 export default function ExpensesPage() {
-  const { user } = useAuth()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
@@ -141,7 +139,7 @@ export default function ExpensesPage() {
                 description: '',
                 category: 'maintenance',
                 receipt_number: '',
-                community_id: communityId || user?.community_id || '',
+                community_id: communityId || '',
               })
               setError('')
               setShowForm(true)

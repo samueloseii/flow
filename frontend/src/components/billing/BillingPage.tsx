@@ -30,8 +30,8 @@ interface Invoice {
   currency: string
   status: string
   due_date: string
-  household_id: string
-  household_name: string | null
+  connection_id: string
+  connection_name: string | null
   account_number: string | null
 }
 
@@ -42,7 +42,7 @@ interface Payment {
   currency: string
   payment_method: string
   receipt_number: string | null
-  household_name: string | null
+  connection_name: string | null
   account_number: string | null
   invoice_number: string | null
 }
@@ -181,7 +181,7 @@ export default function BillingPage() {
         payment_method: payForm.method,
         payment_date: new Date().toISOString(),
         receipt_number: payForm.receipt_number || null,
-        household_id: payingInvoice.household_id,
+        connection_id: payingInvoice.connection_id,
         invoice_id: payingInvoice.id,
       })
       setPayingInvoice(null)
@@ -202,7 +202,7 @@ export default function BillingPage() {
     <div>
       <PageHeader
         title="Billing"
-        subtitle="Bills by household, with the consumption they were charged for."
+        subtitle="Bills by connection, with the consumption they were charged for."
         actions={
           <button
             onClick={() => {
@@ -253,7 +253,7 @@ export default function BillingPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Household, account or invoice no."
+                placeholder="Connection, account or invoice no."
                 className={`${inputClass} pl-9`}
               />
             </div>
@@ -291,7 +291,7 @@ export default function BillingPage() {
               onChange={(e) => setUnpaidOnly(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-primary-600"
             />
-            Show only households that still owe money
+            Show only connections that still owe money
           </label>
         </Card>
       )}
@@ -304,7 +304,7 @@ export default function BillingPage() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr className="text-left text-xs font-medium uppercase text-gray-500">
-                  <th className="px-6 py-3">Household</th>
+                  <th className="px-6 py-3">Connection</th>
                   <th className="px-6 py-3">Period</th>
                   <th className="px-6 py-3 text-right">Consumption</th>
                   <th className="px-6 py-3 text-right">Total</th>
@@ -318,10 +318,10 @@ export default function BillingPage() {
                   <tr key={inv.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm">
                       <button
-                        onClick={() => navigate(`/households/${inv.household_id}`)}
+                        onClick={() => navigate(`/connections/${inv.connection_id}`)}
                         className="font-medium text-primary-600 hover:underline"
                       >
-                        {inv.household_name || 'Unknown household'}
+                        {inv.connection_name || 'Unknown connection'}
                       </button>
                       <span className="block text-xs text-gray-400">
                         {inv.account_number} · {inv.invoice_number}
@@ -399,7 +399,7 @@ export default function BillingPage() {
               <thead className="bg-gray-50">
                 <tr className="text-left text-xs font-medium uppercase text-gray-500">
                   <th className="px-6 py-3">Date</th>
-                  <th className="px-6 py-3">Household</th>
+                  <th className="px-6 py-3">Connection</th>
                   <th className="px-6 py-3">Invoice</th>
                   <th className="px-6 py-3">Method</th>
                   <th className="px-6 py-3">Receipt</th>
@@ -412,7 +412,7 @@ export default function BillingPage() {
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm">{formatDate(p.payment_date)}</td>
                     <td className="px-6 py-4 text-sm">
-                      {p.household_name || '—'}
+                      {p.connection_name || '—'}
                       <span className="block text-xs text-gray-400">{p.account_number}</span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">{p.invoice_number || '—'}</td>
@@ -444,7 +444,7 @@ export default function BillingPage() {
       {showGenerate && (
         <Modal
           title="Generate bills"
-          description="Bills every active household in the community using the readings recorded in the period."
+          description="Bills every active connection in the community using the readings recorded in the period."
           onClose={() => setShowGenerate(false)}
         >
           <form onSubmit={handleGenerate} className="space-y-4">
@@ -521,7 +521,7 @@ export default function BillingPage() {
       {payingInvoice && (
         <Modal
           title="Record payment"
-          description={`${payingInvoice.household_name} · ${payingInvoice.invoice_number}`}
+          description={`${payingInvoice.connection_name} · ${payingInvoice.invoice_number}`}
           onClose={() => setPayingInvoice(null)}
         >
           <form onSubmit={handlePayment} className="space-y-4">

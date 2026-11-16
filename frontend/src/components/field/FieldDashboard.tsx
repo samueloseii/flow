@@ -7,16 +7,13 @@ interface CommunityInfo {
   id: string
   name: string
   country: string
-  currency: string
-  tariff_fixed: number
-  tariff_per_m3: number
 }
 
-interface HouseholdInfo {
+interface ConnectionInfo {
   id: string
   community_id: string
   account_number: string
-  head_of_household: string
+  contact_name: string
   members_count: number
   status: string
   outstanding_balance: number
@@ -29,7 +26,7 @@ interface Props {
 export default function FieldDashboard({ onNavigate }: Props) {
   const { user } = useAuth()
   const [communities, setCommunities] = useState<CommunityInfo[]>([])
-  const [households, setHouseholds] = useState<HouseholdInfo[]>([])
+  const [connections, setConnections] = useState<ConnectionInfo[]>([])
   const [online, setOnline] = useState(navigator.onLine)
   const [loading, setLoading] = useState(true)
 
@@ -46,10 +43,10 @@ export default function FieldDashboard({ onNavigate }: Props) {
 
   useEffect(() => {
     if (!user) return
-    Promise.all([api.get('/communities/'), api.get('/households/')])
+    Promise.all([api.get('/communities/'), api.get('/connections/')])
       .then(([commRes, hhRes]) => {
         setCommunities(commRes.data)
-        setHouseholds(hhRes.data)
+        setConnections(hhRes.data)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -68,14 +65,14 @@ export default function FieldDashboard({ onNavigate }: Props) {
       <div className="max-w-lg mx-auto bg-white rounded-xl border border-gray-100 p-6">
         <h1 className="text-lg font-semibold text-gray-900">No community assigned</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Your account is not linked to any community yet, so there are no households to read. Ask
+          Your account is not linked to any community yet, so there are no connections to read. Ask
           your administrator to open Team, edit your account and tick the communities you cover.
         </p>
       </div>
     )
   }
 
-  const activeCount = households.filter((h) => h.status === 'active').length
+  const activeCount = connections.filter((h) => h.status === 'active').length
 
   return (
     <div className="max-w-lg mx-auto">
@@ -94,13 +91,13 @@ export default function FieldDashboard({ onNavigate }: Props) {
             {communities.map((c) => (
               <li key={c.id} className="flex justify-between">
                 <span>{c.name}</span>
-                <span className="text-primary-200">{households.filter((h) => h.community_id === c.id && h.status === 'active').length} active households</span>
+                <span className="text-primary-200">{connections.filter((h) => h.community_id === c.id && h.status === 'active').length} active connections</span>
               </li>
             ))}
           </ul>
         ) : (
           <div className="flex gap-4 mt-3 text-sm">
-            <span>{activeCount} active households</span>
+            <span>{activeCount} active connections</span>
           </div>
         )}
       </div>
@@ -108,8 +105,8 @@ export default function FieldDashboard({ onNavigate }: Props) {
       {/* Quick stats */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-500">Households</p>
-          <p className="text-2xl font-bold">{households.length}</p>
+          <p className="text-xs text-gray-500">Connections</p>
+          <p className="text-2xl font-bold">{connections.length}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <p className="text-xs text-gray-500">To read this month</p>

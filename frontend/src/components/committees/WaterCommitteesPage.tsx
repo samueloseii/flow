@@ -16,7 +16,7 @@ interface Committee {
   contact_name: string | null
   contact_phone: string | null
   community_count: number
-  household_count: number
+  connection_count: number
 }
 
 interface Financials {
@@ -97,7 +97,7 @@ export default function WaterCommitteesPage() {
         actions={<button onClick={() => { setForm({ ...emptyForm, partner_id: partners[0]?.id ?? '' }); setError(''); setShowForm(true) }} className={primaryButtonClass}><Plus className="h-4 w-4" />New committee</button>}
       />
       {loading ? <Spinner /> : committees.length === 0 ? (
-        <EmptyState icon={Building2} title="No water committees yet" hint="Add the committee first, then its communities and households." />
+        <EmptyState icon={Building2} title="No water committees yet" hint="Add the committee first, then its communities and connections." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-1 p-0 overflow-hidden">
@@ -108,7 +108,7 @@ export default function WaterCommitteesPage() {
                     <div>
                       <p className="font-medium text-gray-900">{c.name}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{c.partner_name ?? '—'}{c.region ? ` · ${c.region}` : ''}</p>
-                      <p className="text-xs text-gray-500 mt-1">{c.community_count} communities · {c.household_count} households</p>
+                      <p className="text-xs text-gray-500 mt-1">{c.community_count} communities · {c.connection_count} connections</p>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); remove(c) }} className="text-gray-400 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
                   </div>

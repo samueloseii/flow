@@ -3,9 +3,9 @@ import { ArrowLeft, Check } from 'lucide-react'
 import api from '../../services/api'
 
 interface Target {
-  household_id: string
+  connection_id: string
   account_number: string
-  head_of_household: string
+  contact_name: string
   community_name: string
   meter_id: string | null
   serial_number: string | null
@@ -19,7 +19,7 @@ interface Props {
 // Operators can fit a new meter in the field: the old one is retired with its final
 // reading kept, and the new serial becomes the active meter for future readings.
 export default function MeterReplaceField({ onBack }: Props) {
-  const [households, setHouseholds] = useState<Target[]>([])
+  const [connections, setConnections] = useState<Target[]>([])
   const [selected, setSelected] = useState('')
   const [serial, setSerial] = useState('')
   const [brand, setBrand] = useState('')
@@ -30,18 +30,18 @@ export default function MeterReplaceField({ onBack }: Props) {
   const [done, setDone] = useState('')
 
   function load() {
-    // Households without an active meter are not in reading-context, so merge both lists.
-    Promise.all([api.get('/households/'), api.get('/communities/'), api.get('/meters/reading-context')])
+    // Connections without an active meter are not in reading-context, so merge both lists.
+    Promise.all([api.get('/connections/'), api.get('/communities/'), api.get('/meters/reading-context')])
       .then(([hhRes, commRes, ctxRes]) => {
         const communityName = new Map<string, string>(commRes.data.map((c: any) => [c.id, c.name]))
-        const metered = new Map<string, any>(ctxRes.data.map((t: any) => [t.household_id, t]))
-        setHouseholds(
+        const metered = new Map<string, any>(ctxRes.data.map((t: any) => [t.connection_id, t]))
+        setConnections(
           hhRes.data.map((h: any): Target => {
             const ctx = metered.get(h.id)
             return {
-              household_id: h.id,
+              connection_id: h.id,
               account_number: h.account_number,
-              head_of_household: h.head_of_household,
+              contact_name: h.contact_name,
               community_name: communityName.get(h.community_id) ?? '',
               meter_id: ctx?.meter_id ?? null,
               serial_number: ctx?.serial_number ?? null,
@@ -50,11 +50,11 @@ export default function MeterReplaceField({ onBack }: Props) {
           }),
         )
       })
-      .catch(() => setHouseholds([]))
+      .catch(() => setConnections([]))
   }
   useEffect(load, [])
 
-  const target = households.find((h) => h.household_id === selected) || null
+  const target = connections.find((h) => h.connection_id === selected) || null
   const hasOldMeter = !!target?.meter_id
 
   async function submit() {
@@ -63,13 +63,13 @@ export default function MeterReplaceField({ onBack }: Props) {
     setError('')
     try {
       await api.post('/meters/', {
-        household_id: target.household_id,
+        connection_id: target.connection_id,
         serial_number: serial.trim(),
         brand: brand.trim() || undefined,
         initial_reading: parseFloat(initialReading) || 0,
         final_reading_of_old_meter: hasOldMeter && finalReading !== '' ? parseFloat(finalReading) : undefined,
       })
-      setDone(`${serial.trim()} is now the active meter for ${target.head_of_household}.`)
+      setDone(`${serial.trim()} is now the active meter for ${target.contact_name}.`)
       setSelected('')
       setSerial('')
       setBrand('')
@@ -98,12 +98,12 @@ export default function MeterReplaceField({ onBack }: Props) {
 
       <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Household</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Connection</label>
           <select className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm" value={selected} onChange={(e) => { setSelected(e.target.value); setDone('') }}>
-            <option value="">Choose a household</option>
-            {households.map((h) => (
-              <option key={h.household_id} value={h.household_id}>
-                {h.account_number} — {h.head_of_household} ({h.community_name}){h.serial_number ? ` · meter ${h.serial_number}` : ' · no meter'}
+            <option value="">Choose a connection</option>
+            {connections.map((h) => (
+              <option key={h.connection_id} value={h.connection_id}>
+                {h.account_number} — {h.contact_name} ({h.community_name}){h.serial_number ? ` · meter ${h.serial_number}` : ' · no meter'}
               </option>
             ))}
           </select>
@@ -116,7 +116,7 @@ export default function MeterReplaceField({ onBack }: Props) {
                 Current meter <span className="font-medium">{target.serial_number}</span>, last reading {target.last_reading_value.toFixed(1)}. It will be marked as replaced and its readings kept.
               </div>
             ) : (
-              <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">This household has no active meter yet.</div>
+              <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">This connection has no active meter yet.</div>
             )}
             {hasOldMeter && (
               <div>

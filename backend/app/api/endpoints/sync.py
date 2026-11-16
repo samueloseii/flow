@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import ADMIN_ROLES, READING_ROLES, require_role
 from app.db.session import get_db
 from app.models.billing import Invoice, InvoiceStatus, Payment, PaymentMethod
-from app.models.household import Household
+from app.models.connection import Connection
 from app.models.meter import Meter, MeterReading
 from app.models.user import User
 from app.services.readings import record_reading
@@ -29,7 +29,7 @@ class SyncMeterReading(BaseModel):
 
 class SyncPayment(BaseModel):
     client_id: str
-    household_id: uuid.UUID
+    connection_id: uuid.UUID
     invoice_id: uuid.UUID | None = None
     amount: float
     currency: str = "USD"
@@ -127,7 +127,7 @@ def push_offline_data(
                 payment_date=p.payment_date,
                 receipt_number=p.receipt_number,
                 notes=p.notes,
-                household_id=p.household_id,
+                connection_id=p.connection_id,
                 invoice_id=p.invoice_id,
             )
             db.add(payment)
@@ -143,9 +143,9 @@ def push_offline_data(
                     elif invoice.amount_paid > 0:
                         invoice.status = InvoiceStatus.PARTIAL
 
-            household = db.query(Household).filter(Household.id == p.household_id).first()
-            if household:
-                household.outstanding_balance = max(0, household.outstanding_balance - p.amount)
+            connection = db.query(Connection).filter(Connection.id == p.connection_id).first()
+            if connection:
+                connection.outstanding_balance = max(0, connection.outstanding_balance - p.amount)
 
             payment_results.append(SyncResultItem(
                 client_id=p.client_id, server_id=str(payment.id), success=True,

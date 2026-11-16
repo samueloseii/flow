@@ -6,7 +6,7 @@ import { Card, PageHeader, Spinner, StatCard, formatMoney } from '../ui'
 interface SystemDashboard {
   total_partners: number
   total_communities: number
-  total_households: number
+  total_connections: number
   total_users: number
   overall_collection_rate: number
   total_revenue: number
@@ -20,7 +20,7 @@ interface Community {
 }
 
 const quickActions = [
-  { href: '/households', label: 'Register a household' },
+  { href: '/connections', label: 'Register a connection' },
   { href: '/billing', label: 'Generate bills' },
   { href: '/expenses', label: 'Record an expense' },
   { href: '/maintenance', label: 'Review issue reports' },
@@ -47,7 +47,7 @@ export default function DashboardPage() {
   const setupSteps = [
     { label: 'Create your first community and its tariff', href: '/communities', done: (data?.total_communities ?? 0) > 0 },
     { label: 'Add operators and a treasurer', href: '/team', done: (data?.total_users ?? 0) > 1 },
-    { label: 'Register households and their meters', href: '/households', done: (data?.total_households ?? 0) > 0 },
+    { label: 'Register connections and their meters', href: '/connections', done: (data?.total_connections ?? 0) > 0 },
   ]
   const setupComplete = setupSteps.every((s) => s.done)
 
@@ -85,7 +85,7 @@ export default function DashboardPage() {
       {data && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Communities" value={data.total_communities} />
-          <StatCard label="Households" value={data.total_households} />
+          <StatCard label="Connections" value={data.total_connections} />
           <StatCard
             label="Collection rate"
             value={`${data.overall_collection_rate}%`}

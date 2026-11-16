@@ -5,20 +5,20 @@ import api from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { Card, EmptyState, PageHeader, Spinner, secondaryButtonClass } from '../ui'
 
-type Level = 'organization' | 'partner' | 'committee' | 'community' | 'household' | 'meter'
+type Level = 'organization' | 'partner' | 'committee' | 'community' | 'connection' | 'meter'
 interface TreeNode { level: Level; id: string; name: string; meta: string | null; status: string | null; children: TreeNode[] }
 interface Tree { root_level: Level; nodes: TreeNode[] }
 
-const LEVELS: Level[] = ['organization', 'partner', 'committee', 'community', 'household', 'meter']
+const LEVELS: Level[] = ['organization', 'partner', 'committee', 'community', 'connection', 'meter']
 const ICONS: Record<Level, React.ComponentType<{ className?: string }>> = {
-  organization: Globe, partner: Handshake, committee: Building2, community: MapPin, household: Home, meter: Gauge,
+  organization: Globe, partner: Handshake, committee: Building2, community: MapPin, connection: Home, meter: Gauge,
 }
 const CHILD_LABEL: Record<Level, [string, string] | null> = {
   organization: ['partner', 'partners'],
   partner: ['water committee', 'water committees'],
   committee: ['community', 'communities'],
-  community: ['household', 'households'],
-  household: ['meter', 'meters'],
+  community: ['connection', 'connections'],
+  connection: ['meter', 'meters'],
   meter: null,
 }
 const TITLES: Record<Level, string> = {
@@ -26,12 +26,12 @@ const TITLES: Record<Level, string> = {
   partner: 'Your partner',
   committee: 'Your water committee',
   community: 'Your community',
-  household: 'Your household',
+  connection: 'Your connection',
   meter: 'Meter',
 }
-const MANAGE = ['super_admin', 'partner_admin', 'community_admin']
+const MANAGE = ['super_admin', 'admin']
 
-// Organization → Partner → Water committee → Community → Household → Meter, as one outline.
+// Organization → Partner → Water committee → Community → Connection → Meter, as one outline.
 // The server returns only the branch this login may see, starting at its own level.
 export default function StructurePage() {
   const { user } = useAuth()
@@ -58,7 +58,7 @@ export default function StructurePage() {
     const muted = !!n.status && n.status !== 'active'
     const Icon = ICONS[n.level]
     const open = !collapsed[n.id]
-    const to = n.level === 'household' ? `/households/${n.id}` : undefined
+    const to = n.level === 'connection' ? `/connections/${n.id}` : undefined
     return (
       <li key={n.id}>
         <div className={`flex items-center gap-2 py-2 pr-5 hover:bg-gray-50 ${muted ? 'text-gray-400' : 'text-gray-900'}`} style={{ paddingLeft: 16 + depth * 28 }}>
@@ -81,9 +81,9 @@ export default function StructurePage() {
         actions={canManage && (
           <>
             {user.role === 'super_admin' && <Link to="/partners" className={secondaryButtonClass}>Organizations &amp; partners</Link>}
-            {['super_admin', 'partner_admin'].includes(user.role) && <Link to="/water-committees" className={secondaryButtonClass}>Water committees</Link>}
+            {(user.role === 'super_admin' || (user.role === 'admin' && user.parent_level !== 'water_committee')) && <Link to="/water-committees" className={secondaryButtonClass}>Water committees</Link>}
             <Link to="/communities" className={secondaryButtonClass}>Communities</Link>
-            <Link to="/households" className={secondaryButtonClass}>Households &amp; import</Link>
+            <Link to="/connections" className={secondaryButtonClass}>Connections &amp; import</Link>
           </>
         )} />
       <Card>

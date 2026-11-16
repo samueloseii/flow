@@ -50,7 +50,7 @@ class TariffResponse(TariffBase):
     water_committee_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    household_count: int = 0
+    connection_count: int = 0
 
     class Config:
         from_attributes = True

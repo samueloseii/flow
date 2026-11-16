@@ -64,11 +64,11 @@ keystore.
 ## How an operator uses it
 
 1. Sign in once while online with the Flow account an administrator created.
-2. The app downloads every household and meter the account covers and stores them locally.
-3. Go offline. Pick a household (search by name or account number), type the cumulative
+2. The app downloads every connection and meter the account covers and stores them locally.
+3. Go offline. Pick a connection (search by name or account number), type the cumulative
    meter reading, save. The app shows the previous reading and the resulting consumption,
    and warns when a reading is lower than the previous one, identical to it, or more than
-   25% above the household's average.
+   25% above the connection's average.
 4. Keep recording. Readings survive closing the app and rebooting the phone.
 5. Back in coverage, press Sync (or let the background job run). Confirmed readings turn
    into receipts; anything the server rejected stays on the phone, marked, ready to retry.
@@ -90,11 +90,11 @@ needs and hands them out via `context.container`.
 
 ### Local database
 
-`meters` is a cache — replaced wholesale on every download, so a household removed on the
+`meters` is a cache — replaced wholesale on every download, so a connection removed on the
 server disappears from the phone.
 
 `readings` is the source of truth until the server confirms otherwise. Each row carries
-`clientId` (a UUID generated on the phone), the meter and household it belongs to, the
+`clientId` (a UUID generated on the phone), the meter and connection it belongs to, the
 value, previous value, reading date, notes, `status`, `serverId`, created/uploaded
 timestamps, the last error and an attempt count. Rows are never deleted before the server
 acknowledges them; synced rows are pruned after seven days so the operator keeps a recent
@@ -108,7 +108,7 @@ network error, `FAILED → SYNCED` on a successful retry. Nothing else moves row
 Retries are safe because every reading carries a `clientId` and the backend stores it in a
 unique column: uploading the same reading twice returns the original `server_id` with
 `duplicate: true` instead of writing a second reading. This matters — a duplicated reading
-would otherwise corrupt the household's consumption and its bill.
+would otherwise corrupt the connection's consumption and its bill.
 
 A dropped response is therefore never data loss: the reading stays local, the next sync
 re-sends it, and the server recognises it.
@@ -119,7 +119,7 @@ re-sends it, and the server recognises it.
 | --- | --- |
 | `POST /auth/login` | sign in, returns a JWT (30 days for field roles) |
 | `GET /auth/me` | operator name, id, community |
-| `GET /meters/reading-context` | every household + meter with its last reading and average |
+| `GET /meters/reading-context` | every connection + meter with its last reading and average |
 | `POST /sync/push` | batch upload of readings, idempotent on `client_id` |
 | `GET /health` | connectivity check |
 

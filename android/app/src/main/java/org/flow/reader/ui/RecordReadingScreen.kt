@@ -79,7 +79,7 @@ fun RecordReadingScreen(
                 .imePadding()
                 .padding(16.dp)
         ) {
-            Text(meter.headOfHousehold, style = MaterialTheme.typography.titleLarge)
+            Text(meter.contactName, style = MaterialTheme.typography.titleLarge)
             Text(
                 "${stringRes(R.string.account, meter.accountNumber)} · ${meter.serialNumber}",
                 style = MaterialTheme.typography.bodyMedium,

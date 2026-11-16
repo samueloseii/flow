@@ -25,11 +25,11 @@ data class MeResponse(
 
 @Serializable
 data class ReadingContext(
-    @SerialName("household_id") val householdId: String,
+    @SerialName("connection_id") val connectionId: String,
     @SerialName("account_number") val accountNumber: String,
-    @SerialName("head_of_household") val headOfHousehold: String,
+    @SerialName("contact_name") val contactName: String,
     val address: String? = null,
-    @SerialName("community_id") val communityId: String,
+    @SerialName("community_id") val communityId: String? = null,
     @SerialName("meter_id") val meterId: String,
     @SerialName("serial_number") val serialNumber: String,
     @SerialName("last_reading_value") val lastReadingValue: Double = 0.0,

@@ -47,15 +47,15 @@ class Invoice(Base):
     months_overdue: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    household_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("households.id")
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("connections.id")
     )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    household: Mapped["Household"] = relationship(back_populates="invoices")  # noqa: F821
+    connection: Mapped["Connection"] = relationship(back_populates="invoices")  # noqa: F821
     payments: Mapped[list["Payment"]] = relationship(back_populates="invoice")
 
 
@@ -75,8 +75,8 @@ class Payment(Base):
     recorded_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    household_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("households.id")
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("connections.id")
     )
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("invoices.id"), nullable=True
@@ -86,5 +86,5 @@ class Payment(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    household: Mapped["Household"] = relationship(back_populates="payments")  # noqa: F821
+    connection: Mapped["Connection"] = relationship(back_populates="payments")  # noqa: F821
     invoice: Mapped["Invoice | None"] = relationship(back_populates="payments")
